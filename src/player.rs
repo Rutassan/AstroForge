@@ -87,6 +87,7 @@ impl Player {
         }
 
         // Простое затухание скорости через силу трения
-        self.body.apply_force(-self.body.velocity * self.friction * self.body.mass);
+        self.body
+            .apply_force(-self.body.velocity * self.friction * self.body.mass);
     }
 }

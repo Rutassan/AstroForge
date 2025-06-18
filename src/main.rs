@@ -151,11 +151,13 @@ fn main() {
             e.body.apply_force(-e.body.velocity * 5.0 * e.body.mass);
 
             e.bullet_timer -= dt;
-            if e.bullet_timer <= 0.0 {
+            if tech_unlocked && e.bullet_timer <= 0.0 {
                 e.bullet_timer = 2.0;
-                let bdir = (player.position - e.position).normalize() * 5.0;
+                let dir = (player.position - e.position).normalize();
+                let spawn_pos = e.position + Vec3::new(dir.x * 0.7, 0.6, dir.z * 0.7);
+                let bdir = (player.position - spawn_pos).normalize() * 5.0;
                 bullets.push(Bullet {
-                    position: e.position + Vec3::new(0.0, e.collider.half_extents.y, 0.0),
+                    position: spawn_pos,
                     body: engine::physics::RigidBody {
                         velocity: bdir,
                         on_ground: false,
@@ -230,7 +232,9 @@ fn main() {
                     if health > 0 {
                         health -= (momentum * 50.0) as i32;
                     }
-                    player.body.apply_impulse(bullet.body.velocity * bullet.body.mass);
+                    player
+                        .body
+                        .apply_impulse(bullet.body.velocity * bullet.body.mass);
                 } else if let Some(e_idx) = enemy_idx {
                     if a == e_idx || b == e_idx {
                         bullet.alive = false;
@@ -244,7 +248,9 @@ fn main() {
                     if health > 0 {
                         health -= (momentum * 50.0) as i32;
                     }
-                    player.body.apply_impulse(bullet.body.velocity * bullet.body.mass);
+                    player
+                        .body
+                        .apply_impulse(bullet.body.velocity * bullet.body.mass);
                 } else if let Some(e_idx) = enemy_idx {
                     if a == e_idx || b == e_idx {
                         bullet.alive = false;
@@ -269,7 +275,7 @@ fn main() {
             });
             cubes.push(CubeInstance {
                 position: e.position,
-                size: 0.7,
+                size: 0.6,
                 color: ENEMY_COLOR,
             });
             cubes.push(CubeInstance {
