@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::input::mouse::MouseMotion;
+use bevy::prelude::*;
 
 #[derive(Component)]
 pub struct Player {
@@ -24,12 +24,10 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_player)
-            .add_systems(
-                Update,
-                (camera_input, player_movement, player_physics, camera_follow)
-                    .chain(),
-            );
+        app.add_systems(Startup, setup_player).add_systems(
+            Update,
+            (camera_input, player_movement, player_physics, camera_follow).chain(),
+        );
     }
 }
 
@@ -39,7 +37,7 @@ fn setup_player(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     println!("🛸 Создание космического корабля...");
-    
+
     // Создаем корабль
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(1.0, 0.5, 2.0))),
@@ -59,7 +57,7 @@ fn setup_player(
         Spaceship,
         Name::new("SpaceShip"),
     ));
-    
+
     println!("🛸 Космический корабль создан!");
 }
 
@@ -73,8 +71,7 @@ fn camera_input(
     }
     for mut controller in &mut query {
         controller.yaw -= delta.x * controller.sensitivity;
-        controller.pitch = (controller.pitch - delta.y * controller.sensitivity)
-            .clamp(-1.54, 1.54);
+        controller.pitch = (controller.pitch - delta.y * controller.sensitivity).clamp(-1.54, 1.54);
     }
 }
 
@@ -137,8 +134,12 @@ fn player_movement(
 
         // Поворот корабля в направлении движения
         if player.velocity.length() > 0.1 {
-            let target_rotation = Quat::from_rotation_y(player.velocity.z.atan2(player.velocity.x) + std::f32::consts::PI / 2.0);
-            transform.rotation = transform.rotation.slerp(target_rotation, time.delta_secs() * 5.0);
+            let target_rotation = Quat::from_rotation_y(
+                player.velocity.z.atan2(player.velocity.x) + std::f32::consts::PI / 2.0,
+            );
+            transform.rotation = transform
+                .rotation
+                .slerp(target_rotation, time.delta_secs() * 5.0);
         }
     }
 }
@@ -155,7 +156,7 @@ fn player_physics(
 
         // Применяем скорость к позиции
         transform.translation += player.velocity * time.delta_secs();
-        
+
         // Проверка земли
         if transform.translation.y <= 0.75 {
             transform.translation.y = 0.75;
