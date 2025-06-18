@@ -159,6 +159,9 @@ fn main() {
                 if health > 0 {
                     health -= 10;
                 }
+                // Apply a small knockback in the direction the bullet was
+                // travelling when it hit the player.
+                player.body.velocity += b.velocity * 0.5;
             }
         }
         bullets.retain(|b| b.alive);

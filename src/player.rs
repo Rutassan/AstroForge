@@ -79,13 +79,16 @@ impl Player {
             self.body.velocity.y = self.jump_power;
             self.body.on_ground = false;
         }
+
+        // Accelerate in the pressed direction without overriding existing
+        // velocity so that external impulses (like knockback) continue to
+        // influence the player.
         if direction.length_squared() > 0.0 {
+            const ACCEL: f32 = 6.25; // tuned for roughly 8 units/s with 0.9 damping
             direction = direction.normalize();
-            self.body.velocity.x = direction.x * self.speed;
-            self.body.velocity.z = direction.z * self.speed;
-        } else {
-            self.body.velocity.x *= 0.8;
-            self.body.velocity.z *= 0.8;
+            let accel = direction * self.speed * ACCEL * dt;
+            self.body.velocity.x += accel.x;
+            self.body.velocity.z += accel.z;
         }
 
         apply_gravity(&mut self.body, dt);
@@ -105,5 +108,8 @@ impl Player {
             &self.collider,
             &obstacles,
         );
+
+        // Gradually damp all velocity components so that impulses fade out over time.
+        self.body.velocity *= 0.9;
     }
 }
