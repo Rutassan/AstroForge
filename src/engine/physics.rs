@@ -1,5 +1,7 @@
 use glam::Vec3;
 
+pub const GRAVITY: f32 = 9.81;
+
 #[derive(Clone, Copy)]
 pub struct Collider {
     pub half_extents: Vec3,
@@ -9,6 +11,27 @@ pub struct Collider {
 pub struct RigidBody {
     pub velocity: Vec3,
     pub on_ground: bool,
+    pub mass: f32,
+    pub force: Vec3,
+}
+
+impl RigidBody {
+    pub fn new(mass: f32) -> Self {
+        Self {
+            velocity: Vec3::ZERO,
+            on_ground: false,
+            mass,
+            force: Vec3::ZERO,
+        }
+    }
+
+    pub fn apply_force(&mut self, force: Vec3) {
+        self.force += force;
+    }
+
+    pub fn apply_impulse(&mut self, impulse: Vec3) {
+        self.velocity += impulse / self.mass;
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -17,14 +40,17 @@ pub struct Aabb {
     pub half_extents: Vec3,
 }
 
-pub fn apply_gravity(body: &mut RigidBody, dt: f32) {
+pub fn apply_gravity(body: &mut RigidBody) {
     if !body.on_ground {
-        body.velocity.y -= 25.0 * dt;
+        body.force.y -= body.mass * GRAVITY;
     }
 }
 
 pub fn integrate(pos: &mut Vec3, body: &mut RigidBody, dt: f32) {
+    let acceleration = body.force / body.mass;
+    body.velocity += acceleration * dt;
     *pos += body.velocity * dt;
+    body.force = Vec3::ZERO;
 }
 
 pub fn resolve_aabb_collisions(
@@ -102,7 +128,7 @@ pub fn resolve_pair(a: &mut PhysicsObject, b: &mut PhysicsObject) -> bool {
 
 pub fn step(objects: &mut [PhysicsObject], static_obs: &[Aabb], dt: f32) -> Vec<(usize, usize)> {
     for obj in objects.iter_mut() {
-        apply_gravity(obj.body, dt);
+        apply_gravity(obj.body);
         integrate(obj.position, obj.body, dt);
         resolve_aabb_collisions(obj.position, obj.body, &obj.collider, static_obs);
     }
