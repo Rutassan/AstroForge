@@ -322,7 +322,9 @@ fn create_floor_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer, u
             color: [0.3, 0.3, 0.3],
         },
     ];
-    let indices: &[u16] = &[0, 1, 2, 2, 3, 0];
+    // WGPU expects counter-clockwise winding for front faces. Arrange the
+    // floor indices accordingly so the surface is visible from above.
+    let indices: &[u16] = &[0, 2, 1, 0, 3, 2];
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Floor Vertex Buffer"),
         contents: bytemuck::cast_slice(&vertices),

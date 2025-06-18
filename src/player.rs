@@ -17,7 +17,9 @@ pub struct Player {
 impl Player {
     pub fn new() -> Self {
         Self {
-            position: Vec3::new(0.0, 1.0, 0.0),
+            // Spawn the player a bit away from the origin so the initial view
+            // isn't clipped by the cube at the center of the scene.
+            position: Vec3::new(0.0, 1.0, 2.0),
             rotation: Quat::IDENTITY,
             yaw: 0.0,
             pitch: 0.0,
