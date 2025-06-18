@@ -14,6 +14,9 @@ impl AudioSystem {
     }
 
     pub fn play_bytes(&self, bytes: &[u8]) {
+        if bytes.is_empty() {
+            return;
+        }
         if let Ok(decoder) = Decoder::new(Cursor::new(bytes.to_vec())) {
             self.sink.append(decoder);
         }
