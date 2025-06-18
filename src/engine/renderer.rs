@@ -1,9 +1,9 @@
 use glam::{Mat4, Vec3};
-use wgpu_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text, GlyphBrush};
-use wgpu::util::DeviceExt;
-use wgpu_glyph::GlyphBrush as WgpuGlyphBrush;
 use std::fs;
 use std::path::Path;
+use wgpu::util::DeviceExt;
+use wgpu_glyph::GlyphBrush as WgpuGlyphBrush;
+use wgpu_glyph::{ab_glyph, GlyphBrush, GlyphBrushBuilder, Section, Text};
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -31,6 +31,13 @@ pub struct Renderer {
     pub depth_texture: wgpu::Texture,
     pub depth_view: wgpu::TextureView,
     pub glyph_brush: WgpuGlyphBrush<()>,
+}
+
+#[derive(Clone, Copy)]
+pub struct CubeInstance {
+    pub position: Vec3,
+    pub size: f32,
+    pub color: [f32; 3],
 }
 
 impl Renderer {
@@ -195,14 +202,16 @@ impl Renderer {
 
         let (vertex_buffer, index_buffer, num_indices) = create_cube_buffers(&device);
         let (floor_vertex, floor_index, floor_indices) = create_floor_buffers(&device);
-        let (artifact_vertex, artifact_index, artifact_indices) =
-            create_artifact_buffers(&device);
+        let (artifact_vertex, artifact_index, artifact_indices) = create_artifact_buffers(&device);
 
         let font_path = "assets/DejaVuSans.ttf";
         let mut font_valid = false;
         if Path::new(font_path).exists() {
             if let Ok(data) = fs::read(font_path) {
-                if data.len() > 4 && (data[0..4] == [0x00, 0x01, 0x00, 0x00] || data[0..4] == [0x4F, 0x54, 0x54, 0x4F]) {
+                if data.len() > 4
+                    && (data[0..4] == [0x00, 0x01, 0x00, 0x00]
+                        || data[0..4] == [0x4F, 0x54, 0x54, 0x4F])
+                {
                     font_valid = true;
                 }
             }
@@ -222,7 +231,9 @@ impl Renderer {
                         if let Ok(bytes) = bytes {
                             // Если это zip-архив, извлечь ttf
                             if url.ends_with(".zip") {
-                                if let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(&bytes)) {
+                                if let Ok(mut archive) =
+                                    zip::ZipArchive::new(std::io::Cursor::new(&bytes))
+                                {
                                     for i in 0..archive.len() {
                                         let mut file = archive.by_index(i).unwrap();
                                         if file.name().ends_with("DejaVuSans.ttf") {
@@ -257,20 +268,22 @@ impl Renderer {
         match fs::read(font_path) {
             Ok(data) => {
                 println!("[DEBUG] Размер DejaVuSans.ttf: {} байт", data.len());
-                let preview: Vec<String> = data.iter().take(16).map(|b| format!("{:02X}", b)).collect();
+                let preview: Vec<String> =
+                    data.iter().take(16).map(|b| format!("{:02X}", b)).collect();
                 println!("[DEBUG] Первые 16 байт: {}", preview.join(" "));
-            },
+            }
             Err(e) => {
                 eprintln!("[ERROR] Не удалось прочитать файл шрифта для диагностики: {e}");
             }
         }
-        let font = match ab_glyph::FontArc::try_from_vec(fs::read(font_path).expect("read font file")) {
-            Ok(f) => f,
-            Err(e) => {
-                eprintln!("[ERROR] Не удалось загрузить TTF-шрифт: {e}");
-                std::process::exit(1);
-            }
-        };
+        let font =
+            match ab_glyph::FontArc::try_from_vec(fs::read(font_path).expect("read font file")) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("[ERROR] Не удалось загрузить TTF-шрифт: {e}");
+                    std::process::exit(1);
+                }
+            };
         let glyph_brush = GlyphBrushBuilder::using_font(font).build(&device, surface_format);
 
         Self {
@@ -336,27 +349,38 @@ impl Renderer {
             .write_buffer(&self.artifact_buffer, 0, bytemuck::bytes_of(&data));
     }
 
-    pub fn render_overlay_text(&mut self, text: &str, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, staging_belt: &mut wgpu::util::StagingBelt) {
+    pub fn render_overlay_text(
+        &mut self,
+        text: &str,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        staging_belt: &mut wgpu::util::StagingBelt,
+    ) {
         let section = Section {
             screen_position: (30.0, 30.0),
-            bounds: (self.size.width as f32 - 60.0, self.size.height as f32 - 60.0),
+            bounds: (
+                self.size.width as f32 - 60.0,
+                self.size.height as f32 - 60.0,
+            ),
             text: vec![Text::new(text)
                 .with_color([1.0, 1.0, 0.5, 1.0])
                 .with_scale(36.0)],
             ..Section::default()
         };
         self.glyph_brush.queue(section);
-        self.glyph_brush.draw_queued(
-            &self.device,
-            staging_belt,
-            encoder,
-            view,
-            self.size.width,
-            self.size.height,
-        ).expect("Draw glyphs");
+        self.glyph_brush
+            .draw_queued(
+                &self.device,
+                staging_belt,
+                encoder,
+                view,
+                self.size.width,
+                self.size.height,
+            )
+            .expect("Draw glyphs");
     }
 
-    pub fn render(&mut self, overlay_text: Option<&str>) {
+    pub fn render(&mut self, overlay_text: Option<&str>, cubes: &[CubeInstance]) {
         use wgpu::util::StagingBelt;
         let mut staging_belt = StagingBelt::new(1024);
         let output = match self.surface.get_current_texture() {
@@ -376,6 +400,84 @@ impl Renderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("encoder"),
             });
+        let mut dynamic_buffers: Vec<wgpu::Buffer> = Vec::new();
+        for c in cubes {
+            let verts = [
+                Vertex {
+                    position: [
+                        c.position.x - 0.5 * c.size,
+                        c.position.y,
+                        c.position.z + 0.5 * c.size,
+                    ],
+                    color: c.color,
+                },
+                Vertex {
+                    position: [
+                        c.position.x + 0.5 * c.size,
+                        c.position.y,
+                        c.position.z + 0.5 * c.size,
+                    ],
+                    color: c.color,
+                },
+                Vertex {
+                    position: [
+                        c.position.x + 0.5 * c.size,
+                        c.position.y + c.size,
+                        c.position.z + 0.5 * c.size,
+                    ],
+                    color: c.color,
+                },
+                Vertex {
+                    position: [
+                        c.position.x - 0.5 * c.size,
+                        c.position.y + c.size,
+                        c.position.z + 0.5 * c.size,
+                    ],
+                    color: c.color,
+                },
+                Vertex {
+                    position: [
+                        c.position.x - 0.5 * c.size,
+                        c.position.y,
+                        c.position.z - 0.5 * c.size,
+                    ],
+                    color: c.color,
+                },
+                Vertex {
+                    position: [
+                        c.position.x + 0.5 * c.size,
+                        c.position.y,
+                        c.position.z - 0.5 * c.size,
+                    ],
+                    color: c.color,
+                },
+                Vertex {
+                    position: [
+                        c.position.x + 0.5 * c.size,
+                        c.position.y + c.size,
+                        c.position.z - 0.5 * c.size,
+                    ],
+                    color: c.color,
+                },
+                Vertex {
+                    position: [
+                        c.position.x - 0.5 * c.size,
+                        c.position.y + c.size,
+                        c.position.z - 0.5 * c.size,
+                    ],
+                    color: c.color,
+                },
+            ];
+            let vb = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("dynamic cube vertex"),
+                    contents: bytemuck::cast_slice(&verts),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+            dynamic_buffers.push(vb);
+        }
+
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("render pass"),
@@ -412,6 +514,15 @@ impl Renderer {
             rpass.set_vertex_buffer(0, self.artifact_vertex.slice(..));
             rpass.set_index_buffer(self.artifact_index.slice(..), wgpu::IndexFormat::Uint16);
             rpass.draw_indexed(0..self.artifact_indices, 0, 0..1);
+
+            if !dynamic_buffers.is_empty() {
+                rpass.set_bind_group(1, &self.default_bind, &[]);
+                for vb in &dynamic_buffers {
+                    rpass.set_vertex_buffer(0, vb.slice(..));
+                    rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    rpass.draw_indexed(0..self.num_indices, 0, 0..1);
+                }
+            }
         }
         if let Some(text) = overlay_text {
             self.render_overlay_text(text, &mut encoder, &view, &mut staging_belt);
@@ -549,15 +660,39 @@ fn create_floor_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer, u
 fn create_artifact_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer, u32) {
     let base_vertices = [
         // front
-        Vertex { position: [-0.5, 0.0, 0.5], color: [1.0, 1.0, 1.0] },
-        Vertex { position: [0.5, 0.0, 0.5], color: [1.0, 1.0, 1.0] },
-        Vertex { position: [0.5, 1.0, 0.5], color: [1.0, 1.0, 1.0] },
-        Vertex { position: [-0.5, 1.0, 0.5], color: [1.0, 1.0, 1.0] },
+        Vertex {
+            position: [-0.5, 0.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.5, 0.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.5, 1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [-0.5, 1.0, 0.5],
+            color: [1.0, 1.0, 1.0],
+        },
         // back
-        Vertex { position: [-0.5, 0.0, -0.5], color: [1.0, 1.0, 1.0] },
-        Vertex { position: [0.5, 0.0, -0.5], color: [1.0, 1.0, 1.0] },
-        Vertex { position: [0.5, 1.0, -0.5], color: [1.0, 1.0, 1.0] },
-        Vertex { position: [-0.5, 1.0, -0.5], color: [1.0, 1.0, 1.0] },
+        Vertex {
+            position: [-0.5, 0.0, -0.5],
+            color: [1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.5, 0.0, -0.5],
+            color: [1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [0.5, 1.0, -0.5],
+            color: [1.0, 1.0, 1.0],
+        },
+        Vertex {
+            position: [-0.5, 1.0, -0.5],
+            color: [1.0, 1.0, 1.0],
+        },
     ];
     let base_indices: &[u16] = &[
         0, 1, 2, 2, 3, 0, // front

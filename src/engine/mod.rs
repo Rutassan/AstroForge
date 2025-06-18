@@ -59,13 +59,21 @@ impl Engine {
             match &event {
                 winit::event::Event::WindowEvent { event, .. } => match event {
                     winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                        if let (Some(winit::event::VirtualKeyCode::Escape), winit::event::ElementState::Pressed) = (input.virtual_keycode, input.state) {
+                        if let (
+                            Some(winit::event::VirtualKeyCode::Escape),
+                            winit::event::ElementState::Pressed,
+                        ) = (input.virtual_keycode, input.state)
+                        {
                             if !engine.paused {
                                 engine.pause();
                             }
                         }
                     }
-                    winit::event::WindowEvent::MouseInput { state: winit::event::ElementState::Pressed, button: winit::event::MouseButton::Left, .. } => {
+                    winit::event::WindowEvent::MouseInput {
+                        state: winit::event::ElementState::Pressed,
+                        button: winit::event::MouseButton::Left,
+                        ..
+                    } => {
                         if engine.paused {
                             engine.resume();
                         }
@@ -82,7 +90,7 @@ impl Engine {
                     }
                 }
                 Event::RedrawRequested(_) => {
-                    engine.renderer.render(None);
+                    engine.renderer.render(None, &[]);
                 }
                 Event::WindowEvent { ref event, .. } => {
                     if let Some(size) = engine.window.handle_window_event(event) {
