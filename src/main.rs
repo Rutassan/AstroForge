@@ -79,6 +79,9 @@ fn setup_scene(
             ..default()
         })),
         Transform::from_xyz(0.0, 0.0, 0.0),
+        Collider {
+            half_extents: Vec3::new(10.0, 0.1, 10.0),
+        },
     ));
 
     // Несколько кубов для красоты

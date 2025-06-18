@@ -2,6 +2,10 @@ use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use crate::Paused;
 
+/// Простая цилиндрическая форма игрока
+const PLAYER_RADIUS: f32 = 0.5;
+const PLAYER_HALF_HEIGHT: f32 = 0.75;
+
 #[derive(Resource)]
 pub struct ControlSettings {
     pub mouse_sensitivity: f32,
@@ -168,7 +172,7 @@ fn player_movement(
 fn player_physics(
     time: Res<Time>,
     mut query: Query<(&mut Transform, &mut Player), With<Spaceship>>,
-    colliders: Query<&Transform, (With<Collider>, Without<Spaceship>)>,
+    colliders: Query<(&Transform, &Collider), Without<Spaceship>>,
 ) {
     let dt = time.delta_secs();
     for (mut transform, mut player) in query.iter_mut() {
@@ -177,48 +181,90 @@ fn player_physics(
             player.velocity.y -= 25.0 * dt;
         }
 
-        // Применяем скорость к позиции
+        let player_half = Vec3::new(PLAYER_RADIUS, PLAYER_HALF_HEIGHT, PLAYER_RADIUS);
+
         let mut new_translation = transform.translation;
+
+        // -------- Вертикальное перемещение --------
         new_translation.y += player.velocity.y * dt;
-
-        // Горизонтальные перемещения с проверкой коллизий
-        let mut proposed_x = new_translation.x + player.velocity.x * dt;
-        let mut proposed_z = new_translation.z + player.velocity.z * dt;
-
-        for collider in &colliders {
-            let half = Vec3::splat(0.5);
-            let player_half = Vec3::new(0.5, 0.25, 1.0);
-
-            // Проверяем ось X
-            if (proposed_x - collider.translation.x).abs() < player_half.x + half.x
-                && (new_translation.y - collider.translation.y).abs() < player_half.y + half.y
-                && (new_translation.z - collider.translation.z).abs() < player_half.z + half.z
+        player.on_ground = false;
+        for (collider_t, collider) in &colliders {
+            let half = collider.half_extents;
+            if (transform.translation.x - collider_t.translation.x).abs() < player_half.x + half.x
+                && (transform.translation.z - collider_t.translation.z).abs() < player_half.z + half.z
             {
-                proposed_x = transform.translation.x;
-            }
+                let collider_top = collider_t.translation.y + half.y;
+                let collider_bottom = collider_t.translation.y - half.y;
 
-            // Проверяем ось Z
-            if (new_translation.x - collider.translation.x).abs() < player_half.x + half.x
-                && (new_translation.y - collider.translation.y).abs() < player_half.y + half.y
-                && (proposed_z - collider.translation.z).abs() < player_half.z + half.z
-            {
-                proposed_z = transform.translation.z;
+                let prev_bottom = transform.translation.y - player_half.y;
+                let prev_top = transform.translation.y + player_half.y;
+                let new_bottom = new_translation.y - player_half.y;
+                let new_top = new_translation.y + player_half.y;
+
+                // Падение сверху
+                if player.velocity.y <= 0.0
+                    && prev_bottom >= collider_top
+                    && new_bottom < collider_top
+                {
+                    new_translation.y = collider_top + player_half.y;
+                    player.velocity.y = 0.0;
+                    player.on_ground = true;
+                }
+
+                // Удар головой снизу
+                if player.velocity.y > 0.0
+                    && prev_top <= collider_bottom
+                    && new_top > collider_bottom
+                {
+                    new_translation.y = collider_bottom - player_half.y;
+                    player.velocity.y = 0.0;
+                }
             }
         }
 
-        new_translation.x = proposed_x;
-        new_translation.z = proposed_z;
+        // -------- Горизонтальное перемещение по оси X --------
+        new_translation.x += player.velocity.x * dt;
+        for (collider_t, collider) in &colliders {
+            let half = collider.half_extents;
+            if (new_translation.x - collider_t.translation.x).abs() < player_half.x + half.x
+                && (new_translation.y - collider_t.translation.y).abs() < player_half.y + half.y
+                && (new_translation.z - collider_t.translation.z).abs() < player_half.z + half.z
+            {
+                if player.velocity.x > 0.0 {
+                    new_translation.x = collider_t.translation.x - half.x - player_half.x;
+                } else if player.velocity.x < 0.0 {
+                    new_translation.x = collider_t.translation.x + half.x + player_half.x;
+                }
+                player.velocity.x = 0.0;
+            }
+        }
+
+        // -------- Горизонтальное перемещение по оси Z --------
+        new_translation.z += player.velocity.z * dt;
+        for (collider_t, collider) in &colliders {
+            let half = collider.half_extents;
+            if (new_translation.x - collider_t.translation.x).abs() < player_half.x + half.x
+                && (new_translation.y - collider_t.translation.y).abs() < player_half.y + half.y
+                && (new_translation.z - collider_t.translation.z).abs() < player_half.z + half.z
+            {
+                if player.velocity.z > 0.0 {
+                    new_translation.z = collider_t.translation.z - half.z - player_half.z;
+                } else if player.velocity.z < 0.0 {
+                    new_translation.z = collider_t.translation.z + half.z + player_half.z;
+                }
+                player.velocity.z = 0.0;
+            }
+        }
+
         transform.translation = new_translation;
 
         // Проверка земли
-        if transform.translation.y <= 0.75 {
-            transform.translation.y = 0.75;
+        if transform.translation.y <= PLAYER_HALF_HEIGHT {
+            transform.translation.y = PLAYER_HALF_HEIGHT;
             if player.velocity.y <= 0.0 {
                 player.velocity.y = 0.0;
                 player.on_ground = true;
             }
-        } else {
-            player.on_ground = false;
         }
 
         // Ограничиваем область движения
@@ -279,6 +325,18 @@ mod tests {
         ));
     }
 
+    fn step_dt(app: &mut App, dt: f32) -> Vec3 {
+        app
+            .world_mut()
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_secs_f32(dt));
+        app.update();
+        let mut query = app
+            .world_mut()
+            .query_filtered::<&Transform, With<Spaceship>>();
+        query.single(app.world()).unwrap().translation
+    }
+
     fn step(app: &mut App) -> Vec3 {
         app.world_mut()
             .resource_mut::<Time>()
@@ -332,5 +390,44 @@ mod tests {
             .press(KeyCode::KeyD);
         let pos = step(&mut app);
         assert!(pos.z < 0.0);
+    }
+
+    #[test]
+    fn fall_to_ground() {
+        let mut app = setup_app();
+        spawn_entities(&mut app, 0.0);
+        // поднять игрока в воздух
+        {
+            let mut q = app
+                .world_mut()
+                .query_filtered::<(&mut Transform, &mut Player), With<Spaceship>>();
+            let (mut t, mut p) = q.single_mut(app.world_mut()).unwrap();
+            t.translation.y = 2.0;
+            p.on_ground = false;
+        }
+        // небольшими шагами дать упасть
+        for _ in 0..10 {
+            step_dt(&mut app, 0.1);
+        }
+        let pos = step_dt(&mut app, 0.1);
+        assert!((pos.y - PLAYER_HALF_HEIGHT).abs() < 0.001);
+    }
+
+    #[test]
+    fn jump_up() {
+        let mut app = setup_app();
+        spawn_entities(&mut app, 0.0);
+        {
+            let mut q = app
+                .world_mut()
+                .query_filtered::<&mut Player, With<Spaceship>>();
+            q.single_mut(app.world_mut()).unwrap().jump_power = 12.0;
+        }
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::Space);
+        let start_y = step_dt(&mut app, 0.1).y;
+        let after_jump_y = step_dt(&mut app, 0.1).y;
+        assert!(after_jump_y > start_y);
     }
 }
