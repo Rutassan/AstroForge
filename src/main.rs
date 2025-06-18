@@ -152,7 +152,7 @@ fn spawn_mysterious_structure(
 
 fn flicker_light(time: Res<Time>, mut query: Query<(&mut PointLight, &Flicker)>) {
     for (mut light, flicker) in &mut query {
-        let phase = (time.elapsed_seconds() * flicker.speed).sin().abs();
+        let phase = (time.elapsed_secs() * flicker.speed).sin().abs();
         light.intensity = flicker.base_intensity + phase * flicker.amplitude;
     }
 }
