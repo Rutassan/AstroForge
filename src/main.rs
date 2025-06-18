@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
 
 mod player;
-use player::{CameraController, PlayerPlugin};
+use player::{CameraController, PlayerPlugin, Collider};
 
 #[derive(Resource, Default)]
 struct Paused(pub bool);
@@ -90,6 +90,7 @@ fn setup_scene(
                 ..default()
             })),
             Transform::from_xyz(i as f32 * 3.0 - 6.0, 0.5, 3.0),
+            Collider { half_extents: Vec3::splat(0.5) },
         ));
     }
 
@@ -139,6 +140,7 @@ fn spawn_mysterious_structure(
                     Mesh3d(block_mesh.clone()),
                     MeshMaterial3d(block_material.clone()),
                     Transform::from_xyz(x, 0.5 + y as f32, z),
+                    Collider { half_extents: Vec3::splat(0.5) },
                 ));
             }
         }
@@ -152,6 +154,7 @@ fn spawn_mysterious_structure(
                 Mesh3d(block_mesh.clone()),
                 MeshMaterial3d(block_material.clone()),
                 Transform::from_xyz(x, 3.5, z),
+                Collider { half_extents: Vec3::splat(0.5) },
             ));
         }
     }
@@ -166,19 +169,25 @@ fn flicker_light(time: Res<Time>, mut query: Query<(&mut PointLight, &Flicker)>)
 
 fn toggle_pause(
     keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
     mut paused: ResMut<Paused>,
 ) {
     if keyboard.just_pressed(KeyCode::Escape) {
         paused.0 = !paused.0;
-        if let Ok(mut window) = windows.single_mut() {
-            if paused.0 {
-                window.cursor_options.visible = true;
-                window.cursor_options.grab_mode = CursorGrabMode::None;
-            } else {
-                window.cursor_options.visible = false;
-                window.cursor_options.grab_mode = CursorGrabMode::Locked;
-            }
+    }
+
+    if paused.0 && (mouse.just_pressed(MouseButton::Left) || keyboard.just_pressed(KeyCode::Enter)) {
+        paused.0 = false;
+    }
+
+    if let Ok(mut window) = windows.single_mut() {
+        if paused.0 {
+            window.cursor_options.visible = true;
+            window.cursor_options.grab_mode = CursorGrabMode::None;
+        } else {
+            window.cursor_options.visible = false;
+            window.cursor_options.grab_mode = CursorGrabMode::Locked;
         }
     }
 }

@@ -28,6 +28,11 @@ pub struct Player {
 #[derive(Component)]
 pub struct Spaceship;
 
+#[derive(Component)]
+pub struct Collider {
+    pub half_extents: Vec3,
+}
+
 #[derive(Component, Default)]
 pub struct CameraController {
     pub yaw: f32,
@@ -57,21 +62,12 @@ fn not_paused(paused: Res<Paused>) -> bool {
 
 fn setup_player(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     settings: Res<ControlSettings>,
 ) {
     println!("🛸 Создание космического корабля...");
 
-    // Создаем корабль
+    // Создаем невидимую физическую модель игрока
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 0.5, 2.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.9, 0.9, 1.0),
-            metallic: 0.8,
-            perceptual_roughness: 0.2,
-            ..default()
-        })),
         Transform::from_xyz(0.0, 1.0, 0.0),
         Player {
             velocity: Vec3::ZERO,
@@ -172,15 +168,47 @@ fn player_movement(
 fn player_physics(
     time: Res<Time>,
     mut query: Query<(&mut Transform, &mut Player), With<Spaceship>>,
+    colliders: Query<&Transform, (With<Collider>, Without<Spaceship>)>,
 ) {
+    let dt = time.delta_secs();
     for (mut transform, mut player) in query.iter_mut() {
         // Гравитация
         if !player.on_ground {
-            player.velocity.y -= 25.0 * time.delta_secs();
+            player.velocity.y -= 25.0 * dt;
         }
 
         // Применяем скорость к позиции
-        transform.translation += player.velocity * time.delta_secs();
+        let mut new_translation = transform.translation;
+        new_translation.y += player.velocity.y * dt;
+
+        // Горизонтальные перемещения с проверкой коллизий
+        let mut proposed_x = new_translation.x + player.velocity.x * dt;
+        let mut proposed_z = new_translation.z + player.velocity.z * dt;
+
+        for collider in &colliders {
+            let half = Vec3::splat(0.5);
+            let player_half = Vec3::new(0.5, 0.25, 1.0);
+
+            // Проверяем ось X
+            if (proposed_x - collider.translation.x).abs() < player_half.x + half.x
+                && (new_translation.y - collider.translation.y).abs() < player_half.y + half.y
+                && (new_translation.z - collider.translation.z).abs() < player_half.z + half.z
+            {
+                proposed_x = transform.translation.x;
+            }
+
+            // Проверяем ось Z
+            if (new_translation.x - collider.translation.x).abs() < player_half.x + half.x
+                && (new_translation.y - collider.translation.y).abs() < player_half.y + half.y
+                && (proposed_z - collider.translation.z).abs() < player_half.z + half.z
+            {
+                proposed_z = transform.translation.z;
+            }
+        }
+
+        new_translation.x = proposed_x;
+        new_translation.z = proposed_z;
+        transform.translation = new_translation;
 
         // Проверка земли
         if transform.translation.y <= 0.75 {
