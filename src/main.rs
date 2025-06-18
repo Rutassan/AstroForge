@@ -12,7 +12,14 @@ struct Flicker {
     base_intensity: f32,
     amplitude: f32,
     speed: f32,
+    active: bool,
 }
+
+#[derive(Component)]
+struct Artifact;
+
+#[derive(Resource)]
+struct ActivationSound(Handle<AudioSource>);
 
 fn main() {
     println!("🚀 AstroForge запускается...");
@@ -32,6 +39,7 @@ fn main() {
         .add_plugins(PlayerPlugin)
         .add_systems(Startup, setup_scene)
         .add_systems(Update, toggle_pause)
+        .add_systems(Update, artifact_reaction)
         .add_systems(Update, flicker_light)
         .run();
 }
@@ -41,6 +49,7 @@ fn setup_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    asset_server: Res<AssetServer>,
     settings: Res<player::ControlSettings>,
 ) {
     println!("✅ Настройка 3D сцены...");
@@ -100,19 +109,24 @@ fn setup_scene(
     // Древняя конструкция в центре
     spawn_mysterious_structure(&mut commands, &mut meshes, &mut materials);
 
-    // Мерцающий свет в центре конструкции
+    // Загружаем звук активации артефакта
+    commands.insert_resource(ActivationSound(asset_server.load("activation.ogg")));
+
+    // Мерцающий свет в центре конструкции (неактивен при старте)
     commands.spawn((
         PointLight {
-            intensity: 300.0,
+            intensity: 0.0,
             range: 8.0,
             ..default()
         },
         Transform::from_xyz(0.0, 2.0, 0.0),
         Flicker {
-            base_intensity: 300.0,
+            base_intensity: 50.0,
             amplitude: 100.0,
             speed: 5.0,
+            active: false,
         },
+        Artifact,
     ));
 
     println!("🌍 Сцена создана!");
@@ -162,11 +176,43 @@ fn spawn_mysterious_structure(
         }
     }
 }
+fn artifact_reaction(
+    player: Query<&Transform, With<player::Spaceship>>,
+    mut flicker: Query<&mut Flicker, With<Artifact>>,
+    sound: Res<ActivationSound>,
+    mut commands: Commands,
+    mut state: Local<bool>,
+) {
+    let player_pos = if let Ok(t) = player.get_single() {
+        t.translation
+    } else {
+        return;
+    };
+
+    let near = player_pos.truncate().length() < 3.0;
+
+    if near && !*state {
+        *state = true;
+        for mut f in &mut flicker {
+            f.active = true;
+        }
+        commands.spawn(AudioPlayer::new(sound.0.clone()));
+    } else if !near && *state {
+        *state = false;
+        for mut f in &mut flicker {
+            f.active = false;
+        }
+    }
+}
 
 fn flicker_light(time: Res<Time>, mut query: Query<(&mut PointLight, &Flicker)>) {
     for (mut light, flicker) in &mut query {
-        let phase = (time.elapsed_secs() * flicker.speed).sin().abs();
-        light.intensity = flicker.base_intensity + phase * flicker.amplitude;
+        if flicker.active {
+            let phase = (time.elapsed_secs() * flicker.speed).sin().abs();
+            light.intensity = flicker.base_intensity + phase * flicker.amplitude;
+        } else {
+            light.intensity = 0.0;
+        }
     }
 }
 
