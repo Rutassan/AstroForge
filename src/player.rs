@@ -1,5 +1,7 @@
 use crate::engine::input::InputState;
-use crate::engine::physics::{apply_gravity, integrate, Collider, RigidBody};
+use crate::engine::physics::{
+    apply_gravity, integrate, resolve_aabb_collisions, Aabb, Collider, RigidBody,
+};
 use glam::{Quat, Vec3};
 use winit::event::VirtualKeyCode;
 
@@ -33,6 +35,22 @@ impl Player {
                 half_extents: Vec3::new(0.5, 0.75, 0.5),
             },
         }
+    }
+
+    fn artifact_aabbs() -> Vec<Aabb> {
+        const COUNT: usize = 28;
+        const RADIUS: f32 = 3.0;
+        let mut blocks = Vec::with_capacity(COUNT);
+        for i in 0..COUNT {
+            let angle = i as f32 / COUNT as f32 * std::f32::consts::TAU;
+            let x = RADIUS * angle.cos();
+            let z = RADIUS * angle.sin();
+            blocks.push(Aabb {
+                center: Vec3::new(x, 0.5, z),
+                half_extents: Vec3::splat(0.5),
+            });
+        }
+        blocks
     }
 
     pub fn update(&mut self, input: &InputState, dt: f32) {
@@ -79,5 +97,13 @@ impl Player {
                 self.body.on_ground = true;
             }
         }
+
+        let obstacles = Self::artifact_aabbs();
+        resolve_aabb_collisions(
+            &mut self.position,
+            &mut self.body,
+            &self.collider,
+            &obstacles,
+        );
     }
 }
