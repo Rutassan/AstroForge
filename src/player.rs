@@ -1,7 +1,5 @@
 use crate::engine::input::InputState;
-use crate::engine::physics::{
-    apply_gravity, integrate, resolve_aabb_collisions, Aabb, Collider, RigidBody,
-};
+use crate::engine::physics::{Aabb, Collider, RigidBody};
 use glam::{Quat, Vec3};
 use winit::event::VirtualKeyCode;
 
@@ -90,24 +88,6 @@ impl Player {
             self.body.velocity.x += accel.x;
             self.body.velocity.z += accel.z;
         }
-
-        apply_gravity(&mut self.body, dt);
-        integrate(&mut self.position, &mut self.body, dt);
-        if self.position.y <= self.collider.half_extents.y {
-            self.position.y = self.collider.half_extents.y;
-            if self.body.velocity.y <= 0.0 {
-                self.body.velocity.y = 0.0;
-                self.body.on_ground = true;
-            }
-        }
-
-        let obstacles = Self::artifact_aabbs();
-        resolve_aabb_collisions(
-            &mut self.position,
-            &mut self.body,
-            &self.collider,
-            &obstacles,
-        );
 
         // Gradually damp all velocity components so that impulses fade out over time.
         self.body.velocity *= 0.9;
