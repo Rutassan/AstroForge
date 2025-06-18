@@ -1,4 +1,6 @@
 use glam::{Mat4, Vec3};
+
+const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 use wgpu::util::DeviceExt;
 
 pub struct Renderer {
@@ -16,6 +18,8 @@ pub struct Renderer {
     pub floor_vertex: wgpu::Buffer,
     pub floor_index: wgpu::Buffer,
     pub floor_indices: u32,
+    pub depth_texture: wgpu::Texture,
+    pub depth_view: wgpu::TextureView,
 }
 
 impl Renderer {
@@ -48,6 +52,8 @@ impl Renderer {
             view_formats: vec![],
         };
         surface.configure(&device, &config);
+
+        let (depth_texture, depth_view) = create_depth_texture(&device, &config, "depth texture");
 
         // camera uniform
         #[repr(C)]
@@ -116,7 +122,13 @@ impl Renderer {
                 cull_mode: Some(wgpu::Face::Back),
                 ..Default::default()
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
         });
@@ -139,6 +151,8 @@ impl Renderer {
             floor_vertex,
             floor_index,
             floor_indices,
+            depth_texture,
+            depth_view,
         }
     }
 
@@ -148,6 +162,9 @@ impl Renderer {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            let (tex, view) = create_depth_texture(&self.device, &self.config, "depth texture");
+            self.depth_texture = tex;
+            self.depth_view = view;
         }
     }
 
@@ -198,7 +215,14 @@ impl Renderer {
                         store: true,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: true,
+                    }),
+                    stencil_ops: None,
+                }),
             });
             rpass.set_pipeline(&self.pipeline);
             rpass.set_bind_group(0, &self.camera_bind, &[]);
@@ -336,4 +360,29 @@ fn create_floor_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer, u
         usage: wgpu::BufferUsages::INDEX,
     });
     (vertex_buffer, index_buffer, indices.len() as u32)
+}
+
+fn create_depth_texture(
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+    label: &str,
+) -> (wgpu::Texture, wgpu::TextureView) {
+    let size = wgpu::Extent3d {
+        width: config.width,
+        height: config.height,
+        depth_or_array_layers: 1,
+    };
+    let desc = wgpu::TextureDescriptor {
+        label: Some(label),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: DEPTH_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    };
+    let texture = device.create_texture(&desc);
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    (texture, view)
 }
