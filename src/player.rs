@@ -9,8 +9,9 @@ pub struct Player {
     yaw: f32,
     pitch: f32,
     pub body: RigidBody,
-    pub speed: f32,
-    pub jump_power: f32,
+    pub movement_force: f32,
+    pub jump_impulse: f32,
+    pub friction: f32,
     pub collider: Collider,
 }
 
@@ -23,14 +24,11 @@ impl Player {
             rotation: Quat::IDENTITY,
             yaw: 0.0,
             pitch: 0.0,
-            body: RigidBody {
-                velocity: Vec3::ZERO,
-                on_ground: false,
-            },
-            speed: 10.0,
-            // Увеличиваем силу прыжка, чтобы игрок мог запрыгивать заметно выше
-            // (примерно в 2-3 раза текущей высоты)
-            jump_power: 25.0,
+            body: RigidBody::new(80.0),
+            movement_force: 300.0,
+            // Импульс прыжка задаётся в ньютон-секундах
+            jump_impulse: 500.0,
+            friction: 5.0,
             collider: Collider {
                 half_extents: Vec3::new(0.5, 0.75, 0.5),
             },
@@ -76,7 +74,7 @@ impl Player {
             direction += right;
         }
         if input.pressed(VirtualKeyCode::Space) && self.body.on_ground {
-            self.body.velocity.y = self.jump_power;
+            self.body.apply_impulse(Vec3::Y * self.jump_impulse);
             self.body.on_ground = false;
         }
 
@@ -84,14 +82,11 @@ impl Player {
         // velocity so that external impulses (like knockback) continue to
         // influence the player.
         if direction.length_squared() > 0.0 {
-            const ACCEL: f32 = 6.25; // tuned for roughly 8 units/s with 0.9 damping
             direction = direction.normalize();
-            let accel = direction * self.speed * ACCEL * dt;
-            self.body.velocity.x += accel.x;
-            self.body.velocity.z += accel.z;
+            self.body.apply_force(direction * self.movement_force);
         }
 
-        // Gradually damp all velocity components so that impulses fade out over time.
-        self.body.velocity *= 0.9;
+        // Простое затухание скорости через силу трения
+        self.body.apply_force(-self.body.velocity * self.friction * self.body.mass);
     }
 }

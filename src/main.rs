@@ -130,10 +130,7 @@ fn main() {
                 enemy = Some(Enemy {
                     position: Vec3::new(8.0, 0.75, -8.0),
                     bullet_timer: 2.0,
-                    body: engine::physics::RigidBody {
-                        velocity: Vec3::ZERO,
-                        on_ground: false,
-                    },
+                    body: engine::physics::RigidBody::new(80.0),
                     collider: engine::physics::Collider {
                         half_extents: Vec3::new(0.5, 0.75, 0.5),
                     },
@@ -148,13 +145,10 @@ fn main() {
                 player.position.z - e.position.z,
             );
             if dir.length_squared() > 0.0001 {
-                let step = dir.normalize() * 2.0;
-                e.body.velocity.x = step.x;
-                e.body.velocity.z = step.z;
-            } else {
-                e.body.velocity.x = 0.0;
-                e.body.velocity.z = 0.0;
+                let dir = dir.normalize();
+                e.body.apply_force(dir * 200.0);
             }
+            e.body.apply_force(-e.body.velocity * 5.0 * e.body.mass);
 
             e.bullet_timer -= dt;
             if e.bullet_timer <= 0.0 {
@@ -165,6 +159,8 @@ fn main() {
                     body: engine::physics::RigidBody {
                         velocity: bdir,
                         on_ground: false,
+                        mass: 0.05,
+                        force: Vec3::ZERO,
                     },
                     collider: engine::physics::Collider {
                         half_extents: Vec3::splat(0.1),
@@ -209,7 +205,19 @@ fn main() {
             });
         }
 
+        let prev_y = player.body.velocity.y;
         let pairs = engine::physics::step(&mut objs, &static_obs, dt);
+
+        if player.body.on_ground && prev_y < 0.0 {
+            let speed = -prev_y;
+            let safe = 6.0;
+            if speed > safe {
+                let dmg = ((speed - safe) * player.body.mass / 4.0) as i32;
+                if health > 0 {
+                    health -= dmg;
+                }
+            }
+        }
 
         for (a, b) in pairs {
             // bullet hitting player or enemy
@@ -217,10 +225,11 @@ fn main() {
                 let bullet = &mut bullets[bullet_i];
                 if a == player_idx || b == player_idx {
                     bullet.alive = false;
+                    let momentum = bullet.body.velocity.length() * bullet.body.mass;
                     if health > 0 {
-                        health -= 10;
+                        health -= (momentum * 50.0) as i32;
                     }
-                    player.body.velocity += bullet.body.velocity * 0.5;
+                    player.body.apply_impulse(bullet.body.velocity * bullet.body.mass);
                 } else if let Some(e_idx) = enemy_idx {
                     if a == e_idx || b == e_idx {
                         bullet.alive = false;
@@ -230,10 +239,11 @@ fn main() {
                 let bullet = &mut bullets[bullet_i];
                 if a == player_idx || b == player_idx {
                     bullet.alive = false;
+                    let momentum = bullet.body.velocity.length() * bullet.body.mass;
                     if health > 0 {
-                        health -= 10;
+                        health -= (momentum * 50.0) as i32;
                     }
-                    player.body.velocity += bullet.body.velocity * 0.5;
+                    player.body.apply_impulse(bullet.body.velocity * bullet.body.mass);
                 } else if let Some(e_idx) = enemy_idx {
                     if a == e_idx || b == e_idx {
                         bullet.alive = false;
