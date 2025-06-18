@@ -8,3 +8,6 @@ winit = "0.27"
 rodio = "0.17"
 glam = "0.25"
 base64 = "0.21"
+wgpu = "0.17"
+futures-lite = "1"
+bytemuck = { version = "1", features = ["derive"] }

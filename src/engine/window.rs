@@ -23,10 +23,17 @@ impl WindowState {
     }
 
     pub fn present(&mut self) {
-        // TODO: rendering pipeline
+        // drawing handled in renderer
     }
 
-    pub fn handle_window_event(&mut self, event: &WindowEvent) -> bool {
-        matches!(event, WindowEvent::CloseRequested)
+    pub fn handle_window_event(
+        &mut self,
+        event: &WindowEvent,
+    ) -> Option<winit::dpi::PhysicalSize<u32>> {
+        match event {
+            WindowEvent::CloseRequested => Some(winit::dpi::PhysicalSize::new(0, 0)),
+            WindowEvent::Resized(size) => Some(*size),
+            _ => None,
+        }
     }
 }
