@@ -210,7 +210,7 @@ fn spawn_mysterious_structure(
         let mat = materials.add(StandardMaterial {
             base_color: Color::srgb(0.05, 0.05, 0.05),
             perceptual_roughness: 0.9,
-            emissive: Color::BLACK,
+            emissive: Color::BLACK.into(),
             ..default()
         });
         commands.spawn((
@@ -222,7 +222,7 @@ fn spawn_mysterious_structure(
             },
             Glow {
                 material: mat,
-                base_emissive: Color::rgb(0.2, 0.6, 1.0),
+                base_emissive: Color::srgb(0.2, 0.6, 1.0),
                 amplitude: 1.0,
                 speed: 3.0,
                 active: false,
@@ -293,9 +293,9 @@ fn glow_blocks(
                     base.red * intensity,
                     base.green * intensity,
                     base.blue * intensity,
-                );
+                ).into();
             } else {
-                mat.emissive = Color::BLACK;
+                mat.emissive = Color::BLACK.into();
             }
         }
     }
