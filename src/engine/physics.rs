@@ -57,7 +57,6 @@ pub fn resolve_aabb_collisions(
     }
 }
 
-#[derive(Clone, Copy)]
 pub struct PhysicsObject<'a> {
     pub position: &'a mut Vec3,
     pub body: &'a mut RigidBody,
