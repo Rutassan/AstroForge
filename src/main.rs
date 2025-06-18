@@ -113,10 +113,11 @@ fn setup_scene(
     spawn_mysterious_structure(&mut commands, &mut meshes, &mut materials);
 
     // Загружаем звук активации артефакта из встроенных данных
-    let bytes = general_purpose::STANDARD
-        .decode(ACTIVATION_B64.trim())
-        .expect("valid base64");
-    let handle = audio_assets.add(AudioSource::from(bytes));
+    let b64_clean: String = ACTIVATION_B64.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/' || *c == '=').collect();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&b64_clean)
+        .expect("valid base64 (проверьте файл assets/activation.ogg.b64)");
+    let handle = audio_assets.add(AudioSource { bytes: bytes.into() });
     commands.insert_resource(ActivationSound(handle));
 
     // Мерцающий свет в центре конструкции (неактивен при старте)
