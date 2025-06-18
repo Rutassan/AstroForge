@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
+use base64::{engine::general_purpose, Engine as _};
 
 mod player;
 use player::{CameraController, PlayerPlugin, Collider};
@@ -20,6 +21,8 @@ struct Artifact;
 
 #[derive(Resource)]
 struct ActivationSound(Handle<AudioSource>);
+
+const ACTIVATION_B64: &str = include_str!("../assets/activation.ogg.b64");
 
 fn main() {
     println!("🚀 AstroForge запускается...");
@@ -49,7 +52,7 @@ fn setup_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
-    asset_server: Res<AssetServer>,
+    mut audio_assets: ResMut<Assets<AudioSource>>,
     settings: Res<player::ControlSettings>,
 ) {
     println!("✅ Настройка 3D сцены...");
@@ -109,8 +112,12 @@ fn setup_scene(
     // Древняя конструкция в центре
     spawn_mysterious_structure(&mut commands, &mut meshes, &mut materials);
 
-    // Загружаем звук активации артефакта
-    commands.insert_resource(ActivationSound(asset_server.load("activation.ogg")));
+    // Загружаем звук активации артефакта из встроенных данных
+    let bytes = general_purpose::STANDARD
+        .decode(ACTIVATION_B64.trim())
+        .expect("valid base64");
+    let handle = audio_assets.add(AudioSource::from(bytes));
+    commands.insert_resource(ActivationSound(handle));
 
     // Мерцающий свет в центре конструкции (неактивен при старте)
     commands.spawn((

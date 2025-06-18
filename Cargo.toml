@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 bevy = "0.16"
 bevy_tasks = "0.16"
+base64 = "0.21"
