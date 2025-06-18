@@ -177,6 +177,8 @@ fn main() {
             half_extents: Vec3::new(50.0, 0.5, 50.0),
         });
         let mut objs: Vec<engine::physics::PhysicsObject> = Vec::new();
+        // Сохраняем prev_y ДО добавления player.body в objs
+        let prev_y = player.body.velocity.y;
         let player_idx = objs.len();
         objs.push(engine::physics::PhysicsObject {
             position: &mut player.position,
@@ -205,7 +207,6 @@ fn main() {
             });
         }
 
-        let prev_y = player.body.velocity.y;
         let pairs = engine::physics::step(&mut objs, &static_obs, dt);
 
         if player.body.on_ground && prev_y < 0.0 {
