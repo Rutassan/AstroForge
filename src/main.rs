@@ -10,6 +10,7 @@ use std::env;
 use std::time::Instant;
 
 const ACTIVATION_B64: &str = include_str!("../assets/activation.ogg.b64");
+const ENEMY_COLOR: [f32; 3] = [1.0, 0.0, 0.0];
 
 #[derive(Clone)]
 struct Enemy {
@@ -253,17 +254,17 @@ fn main() {
             cubes.push(CubeInstance {
                 position: e.position + Vec3::new(0.0, -0.5, 0.0),
                 size: 0.5,
-                color: [1.0, 0.0, 0.0],
+                color: ENEMY_COLOR,
             });
             cubes.push(CubeInstance {
                 position: e.position,
                 size: 0.7,
-                color: [1.0, 0.0, 0.0],
+                color: ENEMY_COLOR,
             });
             cubes.push(CubeInstance {
                 position: e.position + Vec3::new(0.0, 0.75, 0.0),
                 size: 0.4,
-                color: [1.0, 0.0, 0.0],
+                color: ENEMY_COLOR,
             });
             let dir = (player.position - e.position).normalize_or_zero();
             let pistol_pos = e.position + Vec3::new(dir.x * 0.7, 0.6, dir.z * 0.7);

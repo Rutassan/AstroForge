@@ -28,7 +28,9 @@ impl Player {
                 on_ground: false,
             },
             speed: 10.0,
-            jump_power: 16.0,
+            // Увеличиваем силу прыжка, чтобы игрок мог запрыгивать заметно выше
+            // (примерно в 2-3 раза текущей высоты)
+            jump_power: 25.0,
             collider: Collider {
                 half_extents: Vec3::new(0.5, 0.75, 0.5),
             },
