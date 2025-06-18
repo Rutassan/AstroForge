@@ -1,7 +1,8 @@
 use bevy::prelude::*;
+use bevy::window::{CursorGrabMode, PrimaryWindow};
 
 mod player;
-use player::PlayerPlugin;
+use player::{CameraController, PlayerPlugin};
 
 fn main() {
     println!("🚀 AstroForge запускается...");
@@ -25,14 +26,25 @@ fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
 ) {
     println!("✅ Настройка 3D сцены...");
     
     // Камера
     commands.spawn((
         Camera3d::default(),
+        CameraController {
+            distance: 10.0,
+            sensitivity: 0.002,
+            ..default()
+        },
         Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+
+    if let Ok(mut window) = windows.single_mut() {
+        window.cursor_options.visible = false;
+        window.cursor_options.grab_mode = CursorGrabMode::Locked;
+    }
 
     // Направленный свет (солнце)
     commands.spawn((

@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::input::mouse::MouseMotion;
 
 #[derive(Component)]
 pub struct Player {
@@ -11,12 +12,24 @@ pub struct Player {
 #[derive(Component)]
 pub struct Spaceship;
 
+#[derive(Component, Default)]
+pub struct CameraController {
+    pub yaw: f32,
+    pub pitch: f32,
+    pub distance: f32,
+    pub sensitivity: f32,
+}
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, setup_player)
-            .add_systems(Update, (player_movement, player_physics, camera_follow));
+            .add_systems(
+                Update,
+                (camera_input, player_movement, player_physics, camera_follow)
+                    .chain(),
+            );
     }
 }
 
@@ -50,26 +63,59 @@ fn setup_player(
     println!("🛸 Космический корабль создан!");
 }
 
+fn camera_input(
+    mut mouse_motion: EventReader<MouseMotion>,
+    mut query: Query<&mut CameraController>,
+) {
+    let delta: Vec2 = mouse_motion.read().map(|e| e.delta).sum();
+    if delta == Vec2::ZERO {
+        return;
+    }
+    for mut controller in &mut query {
+        controller.yaw -= delta.x * controller.sensitivity;
+        controller.pitch = (controller.pitch - delta.y * controller.sensitivity)
+            .clamp(-1.54, 1.54);
+    }
+}
+
 fn player_movement(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
-    mut query: Query<(&mut Transform, &mut Player), With<Spaceship>>,
+    mut queries: ParamSet<(
+        Query<&Transform, With<Camera3d>>,
+        Query<(&mut Transform, &mut Player), With<Spaceship>>,
+    )>,
 ) {
-    for (mut transform, mut player) in query.iter_mut() {
+    let camera_transform = if let Ok(t) = queries.p0().get_single() {
+        *t
+    } else {
+        Transform::default()
+    };
+
+    let forward = {
+        let f = camera_transform.forward();
+        Vec3::new(f.x, 0.0, f.z).normalize_or_zero()
+    };
+    let right = {
+        let r = camera_transform.right();
+        Vec3::new(r.x, 0.0, r.z).normalize_or_zero()
+    };
+
+    for (mut transform, mut player) in queries.p1().iter_mut() {
         let mut direction = Vec3::ZERO;
 
         // WASD управление
         if keyboard_input.pressed(KeyCode::KeyW) {
-            direction.z -= 1.0;
+            direction += forward;
         }
         if keyboard_input.pressed(KeyCode::KeyS) {
-            direction.z += 1.0;
+            direction -= forward;
         }
         if keyboard_input.pressed(KeyCode::KeyA) {
-            direction.x -= 1.0;
+            direction -= right;
         }
         if keyboard_input.pressed(KeyCode::KeyD) {
-            direction.x += 1.0;
+            direction += right;
         }
 
         // Прыжок
@@ -129,12 +175,114 @@ fn player_physics(
 
 fn camera_follow(
     player_query: Query<&Transform, (With<Spaceship>, Without<Camera3d>)>,
-    mut camera_query: Query<&mut Transform, (With<Camera3d>, Without<Spaceship>)>,
+    mut camera_query: Query<(&mut Transform, &CameraController), With<Camera3d>>,
     time: Res<Time>,
 ) {
-    if let (Ok(player_transform), Ok(mut camera_transform)) = (player_query.single(), camera_query.single_mut()) {
-        let target_position = player_transform.translation + Vec3::new(0.0, 5.0, 10.0);
-        camera_transform.translation = camera_transform.translation.lerp(target_position, time.delta_secs() * 2.0);
-        camera_transform.look_at(player_transform.translation, Vec3::Y);
+    if let (Ok(player_transform), Ok((mut camera_transform, controller))) =
+        (player_query.single(), camera_query.single_mut())
+    {
+        let rotation = Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
+        let target_pos = player_transform.translation
+            - rotation.mul_vec3(Vec3::new(0.0, 0.0, controller.distance))
+            + Vec3::Y * 2.0;
+        camera_transform.translation = camera_transform
+            .translation
+            .lerp(target_pos, time.delta_secs() * 5.0);
+        camera_transform.rotation = rotation;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::prelude::*;
+    use bevy_tasks::{ComputeTaskPool, TaskPool};
+    use std::time::Duration;
+
+    fn setup_app() -> App {
+        ComputeTaskPool::get_or_init(TaskPool::default);
+        let mut app = App::new();
+        app.add_systems(Update, (player_movement, player_physics).chain());
+        app.world_mut().insert_resource(Time::<()>::default());
+        app.world_mut()
+            .insert_resource(ButtonInput::<KeyCode>::default());
+        app
+    }
+
+    fn spawn_entities(app: &mut App, yaw: f32) {
+        app.world_mut().spawn((
+            Camera3d::default(),
+            Transform::from_rotation(Quat::from_rotation_y(yaw)),
+            CameraController {
+                yaw,
+                ..Default::default()
+            },
+        ));
+
+        app.world_mut().spawn((
+            Transform::from_xyz(0.0, 0.75, 0.0),
+            Player {
+                velocity: Vec3::ZERO,
+                speed: 1.0,
+                jump_power: 0.0,
+                on_ground: true,
+            },
+            Spaceship,
+        ));
+    }
+
+    fn step(app: &mut App) -> Vec3 {
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_secs_f32(1.0));
+        app.update();
+        let mut query = app
+            .world_mut()
+            .query_filtered::<&Transform, With<Spaceship>>();
+        query.single(app.world()).unwrap().translation
+    }
+
+    #[test]
+    fn move_forward() {
+        let mut app = setup_app();
+        spawn_entities(&mut app, std::f32::consts::FRAC_PI_2);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyW);
+        let pos = step(&mut app);
+        assert!(pos.x < 0.0);
+    }
+
+    #[test]
+    fn move_backward() {
+        let mut app = setup_app();
+        spawn_entities(&mut app, std::f32::consts::FRAC_PI_2);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyS);
+        let pos = step(&mut app);
+        assert!(pos.x > 0.0);
+    }
+
+    #[test]
+    fn move_left() {
+        let mut app = setup_app();
+        spawn_entities(&mut app, std::f32::consts::FRAC_PI_2);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyA);
+        let pos = step(&mut app);
+        assert!(pos.z > 0.0);
+    }
+
+    #[test]
+    fn move_right() {
+        let mut app = setup_app();
+        spawn_entities(&mut app, std::f32::consts::FRAC_PI_2);
+        app.world_mut()
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyD);
+        let pos = step(&mut app);
+        assert!(pos.z < 0.0);
     }
 }
