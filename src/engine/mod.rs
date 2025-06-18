@@ -82,7 +82,7 @@ impl Engine {
                     }
                 }
                 Event::RedrawRequested(_) => {
-                    engine.renderer.render();
+                    engine.renderer.render(None);
                 }
                 Event::WindowEvent { ref event, .. } => {
                     if let Some(size) = engine.window.handle_window_event(event) {

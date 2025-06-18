@@ -1,7 +1,11 @@
 use glam::{Mat4, Vec3};
+use wgpu_glyph::{ab_glyph, GlyphBrushBuilder, Section, Text, GlyphBrush};
+use wgpu::util::DeviceExt;
+use wgpu_glyph::GlyphBrush as WgpuGlyphBrush;
+use std::fs;
+use std::path::Path;
 
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-use wgpu::util::DeviceExt;
 
 pub struct Renderer {
     pub surface: wgpu::Surface,
@@ -26,6 +30,7 @@ pub struct Renderer {
     artifact_buffer: wgpu::Buffer,
     pub depth_texture: wgpu::Texture,
     pub depth_view: wgpu::TextureView,
+    pub glyph_brush: WgpuGlyphBrush<()>,
 }
 
 impl Renderer {
@@ -193,6 +198,81 @@ impl Renderer {
         let (artifact_vertex, artifact_index, artifact_indices) =
             create_artifact_buffers(&device);
 
+        let font_path = "assets/DejaVuSans.ttf";
+        let mut font_valid = false;
+        if Path::new(font_path).exists() {
+            if let Ok(data) = fs::read(font_path) {
+                if data.len() > 4 && (data[0..4] == [0x00, 0x01, 0x00, 0x00] || data[0..4] == [0x4F, 0x54, 0x54, 0x4F]) {
+                    font_valid = true;
+                }
+            }
+        }
+        if !font_valid {
+            let urls = [
+                "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
+                "https://downloads.sourceforge.net/project/dejavu/dejavu/2.37/dejavu-fonts-ttf-2.37.zip"
+            ];
+            let mut downloaded = false;
+            for url in urls.iter() {
+                println!("[INFO] Пытаюсь скачать шрифт: {url}");
+                let resp = reqwest::blocking::get(*url);
+                if let Ok(resp) = resp {
+                    if resp.status().is_success() {
+                        let bytes = resp.bytes();
+                        if let Ok(bytes) = bytes {
+                            // Если это zip-архив, извлечь ttf
+                            if url.ends_with(".zip") {
+                                if let Ok(mut archive) = zip::ZipArchive::new(std::io::Cursor::new(&bytes)) {
+                                    for i in 0..archive.len() {
+                                        let mut file = archive.by_index(i).unwrap();
+                                        if file.name().ends_with("DejaVuSans.ttf") {
+                                            let mut ttf_bytes = Vec::new();
+                                            use std::io::Read;
+                                            file.read_to_end(&mut ttf_bytes).unwrap();
+                                            fs::create_dir_all("assets").ok();
+                                            if fs::write(font_path, &ttf_bytes).is_ok() {
+                                                downloaded = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                fs::create_dir_all("assets").ok();
+                                if fs::write(font_path, &bytes).is_ok() {
+                                    downloaded = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if !downloaded {
+                eprintln!("[ERROR] Не удалось скачать или извлечь шрифт DejaVuSans.ttf ни с одного источника");
+                std::process::exit(1);
+            }
+        }
+        // Диагностика: размер и первые байты файла шрифта
+        match fs::read(font_path) {
+            Ok(data) => {
+                println!("[DEBUG] Размер DejaVuSans.ttf: {} байт", data.len());
+                let preview: Vec<String> = data.iter().take(16).map(|b| format!("{:02X}", b)).collect();
+                println!("[DEBUG] Первые 16 байт: {}", preview.join(" "));
+            },
+            Err(e) => {
+                eprintln!("[ERROR] Не удалось прочитать файл шрифта для диагностики: {e}");
+            }
+        }
+        let font = match ab_glyph::FontArc::try_from_vec(fs::read(font_path).expect("read font file")) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("[ERROR] Не удалось загрузить TTF-шрифт: {e}");
+                std::process::exit(1);
+            }
+        };
+        let glyph_brush = GlyphBrushBuilder::using_font(font).build(&device, surface_format);
+
         Self {
             surface,
             device,
@@ -216,6 +296,7 @@ impl Renderer {
             artifact_buffer,
             depth_texture,
             depth_view,
+            glyph_brush,
         }
     }
 
@@ -255,7 +336,29 @@ impl Renderer {
             .write_buffer(&self.artifact_buffer, 0, bytemuck::bytes_of(&data));
     }
 
-    pub fn render(&mut self) {
+    pub fn render_overlay_text(&mut self, text: &str, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, staging_belt: &mut wgpu::util::StagingBelt) {
+        let section = Section {
+            screen_position: (30.0, 30.0),
+            bounds: (self.size.width as f32 - 60.0, self.size.height as f32 - 60.0),
+            text: vec![Text::new(text)
+                .with_color([1.0, 1.0, 0.5, 1.0])
+                .with_scale(36.0)],
+            ..Section::default()
+        };
+        self.glyph_brush.queue(section);
+        self.glyph_brush.draw_queued(
+            &self.device,
+            staging_belt,
+            encoder,
+            view,
+            self.size.width,
+            self.size.height,
+        ).expect("Draw glyphs");
+    }
+
+    pub fn render(&mut self, overlay_text: Option<&str>) {
+        use wgpu::util::StagingBelt;
+        let mut staging_belt = StagingBelt::new(1024);
         let output = match self.surface.get_current_texture() {
             Ok(frame) => frame,
             Err(_) => {
@@ -310,6 +413,10 @@ impl Renderer {
             rpass.set_index_buffer(self.artifact_index.slice(..), wgpu::IndexFormat::Uint16);
             rpass.draw_indexed(0..self.artifact_indices, 0, 0..1);
         }
+        if let Some(text) = overlay_text {
+            self.render_overlay_text(text, &mut encoder, &view, &mut staging_belt);
+        }
+        staging_belt.finish();
         self.queue.submit(Some(encoder.finish()));
         output.present();
     }
