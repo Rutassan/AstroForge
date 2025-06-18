@@ -32,7 +32,8 @@ fn main() {
         let view =
             Mat4::from_quat(player.rotation).inverse() * Mat4::from_translation(-player.position);
         let aspect = engine.renderer.size.width as f32 / engine.renderer.size.height as f32;
-        let proj = Mat4::perspective_rh_gl(60f32.to_radians(), aspect, 0.1, 100.0);
+        // WGPU expects a projection matrix with a `[0, 1]` depth range.
+        let proj = Mat4::perspective_rh(60f32.to_radians(), aspect, 0.1, 100.0);
         engine.renderer.update_camera(&(proj * view));
 
         engine.input.reset();
