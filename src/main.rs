@@ -4,6 +4,9 @@ use bevy::window::{CursorGrabMode, PrimaryWindow};
 mod player;
 use player::{CameraController, PlayerPlugin};
 
+#[derive(Resource, Default)]
+struct Paused(pub bool);
+
 #[derive(Component)]
 struct Flicker {
     base_intensity: f32,
@@ -15,6 +18,8 @@ fn main() {
     println!("🚀 AstroForge запускается...");
 
     App::new()
+        .insert_resource(player::ControlSettings::default())
+        .insert_resource(Paused(false))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "🚀 AstroForge - Космическая игра".to_string(),
@@ -26,6 +31,7 @@ fn main() {
         }))
         .add_plugins(PlayerPlugin)
         .add_systems(Startup, setup_scene)
+        .add_systems(Update, toggle_pause)
         .add_systems(Update, flicker_light)
         .run();
 }
@@ -35,6 +41,7 @@ fn setup_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    settings: Res<player::ControlSettings>,
 ) {
     println!("✅ Настройка 3D сцены...");
 
@@ -42,11 +49,11 @@ fn setup_scene(
     commands.spawn((
         Camera3d::default(),
         CameraController {
-            distance: 10.0,
-            sensitivity: 0.002,
+            distance: 0.0,
+            sensitivity: settings.mouse_sensitivity,
             ..default()
         },
-        Transform::from_xyz(0.0, 5.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 1.5, 0.0),
     ));
 
     if let Ok(mut window) = windows.single_mut() {
@@ -154,5 +161,24 @@ fn flicker_light(time: Res<Time>, mut query: Query<(&mut PointLight, &Flicker)>)
     for (mut light, flicker) in &mut query {
         let phase = (time.elapsed_secs() * flicker.speed).sin().abs();
         light.intensity = flicker.base_intensity + phase * flicker.amplitude;
+    }
+}
+
+fn toggle_pause(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut windows: Query<&mut Window, With<PrimaryWindow>>,
+    mut paused: ResMut<Paused>,
+) {
+    if keyboard.just_pressed(KeyCode::Escape) {
+        paused.0 = !paused.0;
+        if let Ok(mut window) = windows.single_mut() {
+            if paused.0 {
+                window.cursor_options.visible = true;
+                window.cursor_options.grab_mode = CursorGrabMode::None;
+            } else {
+                window.cursor_options.visible = false;
+                window.cursor_options.grab_mode = CursorGrabMode::Locked;
+            }
+        }
     }
 }
