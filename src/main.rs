@@ -3,12 +3,25 @@ mod player;
 
 use crate::player::Player;
 use base64::Engine as _;
+use engine::renderer::CubeInstance;
 use engine::Engine;
 use glam::{Mat4, Vec2, Vec3};
 use std::env;
 use std::time::Instant;
 
 const ACTIVATION_B64: &str = include_str!("../assets/activation.ogg.b64");
+
+#[derive(Clone)]
+struct Enemy {
+    position: Vec3,
+    bullet_timer: f32,
+}
+
+struct Bullet {
+    position: Vec3,
+    velocity: Vec3,
+    alive: bool,
+}
 
 fn main() {
     println!("🚀 AstroForge запуск собственного движка...");
@@ -25,6 +38,13 @@ fn main() {
     let default_title = window_title;
     let mut tech_unlocked = false;
     let mut message_timer = 0.0f32;
+
+    let mut enemy: Option<Enemy> = None;
+    let mut bullets: Vec<Bullet> = Vec::new();
+    let mut spawn_timer = 0.0f32;
+    let mut spawn_started = false;
+    let mut health: i32 = 100;
+    let mut game_over = false;
 
     let b64_clean: String = ACTIVATION_B64
         .chars()
@@ -95,7 +115,83 @@ fn main() {
             }
         }
 
-        engine.renderer.render(overlay_text);
+        // enemy spawn logic after tech unlock
+        if tech_unlocked && !spawn_started {
+            spawn_timer = 5.0;
+            spawn_started = true;
+        }
+        if spawn_started && spawn_timer > 0.0 {
+            spawn_timer -= dt;
+            if spawn_timer <= 0.0 {
+                enemy = Some(Enemy {
+                    position: Vec3::new(8.0, 0.0, -8.0),
+                    bullet_timer: 2.0,
+                });
+            }
+        }
+
+        if let Some(e) = &mut enemy {
+            let dir = Vec3::new(
+                player.position.x - e.position.x,
+                0.0,
+                player.position.z - e.position.z,
+            );
+            if dir.length_squared() > 0.0001 {
+                let step = dir.normalize() * 2.0 * dt;
+                e.position += step;
+            }
+            e.bullet_timer -= dt;
+            if e.bullet_timer <= 0.0 {
+                e.bullet_timer = 2.0;
+                let bdir = (player.position - e.position).normalize() * 5.0;
+                bullets.push(Bullet {
+                    position: e.position + Vec3::new(0.0, 0.5, 0.0),
+                    velocity: bdir,
+                    alive: true,
+                });
+            }
+        }
+
+        for b in &mut bullets {
+            b.position += b.velocity * dt;
+            if (b.position - player.position).length() < 0.5 {
+                b.alive = false;
+                if health > 0 {
+                    health -= 10;
+                }
+            }
+        }
+        bullets.retain(|b| b.alive);
+
+        let mut cubes: Vec<CubeInstance> = Vec::new();
+        if let Some(e) = &enemy {
+            cubes.push(CubeInstance {
+                position: e.position,
+                size: 1.0,
+                color: [1.0, 0.0, 0.0],
+            });
+            let dir = (player.position - e.position).normalize_or_zero();
+            let pistol_pos = e.position + Vec3::new(dir.x * 0.7, 0.6, dir.z * 0.7);
+            cubes.push(CubeInstance {
+                position: pistol_pos,
+                size: 0.2,
+                color: [0.0, 1.0, 0.0],
+            });
+        }
+        for b in &bullets {
+            cubes.push(CubeInstance {
+                position: b.position,
+                size: 0.1,
+                color: [1.0, 1.0, 0.0],
+            });
+        }
+
+        if health <= 0 && !game_over {
+            overlay_text = Some("Вы погибли");
+            game_over = true;
+        }
+
+        engine.renderer.render(overlay_text, &cubes);
         engine.input.reset();
     });
 }
