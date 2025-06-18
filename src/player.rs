@@ -2,10 +2,19 @@ use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
 use crate::Paused;
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct ControlSettings {
     pub mouse_sensitivity: f32,
     pub movement_speed: f32,
+}
+
+impl Default for ControlSettings {
+    fn default() -> Self {
+        Self {
+            mouse_sensitivity: 0.001,
+            movement_speed: 8.0,
+        }
+    }
 }
 
 #[derive(Component)]
