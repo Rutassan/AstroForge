@@ -90,7 +90,7 @@ impl Engine {
                     }
                 }
                 Event::RedrawRequested(_) => {
-                    engine.renderer.render(None, &[]);
+                    engine.renderer.render(None, 100, &[]);
                 }
                 Event::WindowEvent { ref event, .. } => {
                     if let Some(size) = engine.window.handle_window_event(event) {

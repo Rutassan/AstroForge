@@ -15,6 +15,8 @@ const ACTIVATION_B64: &str = include_str!("../assets/activation.ogg.b64");
 struct Enemy {
     position: Vec3,
     bullet_timer: f32,
+    body: engine::physics::RigidBody,
+    collider: engine::physics::Collider,
 }
 
 struct Bullet {
@@ -124,8 +126,15 @@ fn main() {
             spawn_timer -= dt;
             if spawn_timer <= 0.0 {
                 enemy = Some(Enemy {
-                    position: Vec3::new(8.0, 0.0, -8.0),
+                    position: Vec3::new(8.0, 0.75, -8.0),
                     bullet_timer: 2.0,
+                    body: engine::physics::RigidBody {
+                        velocity: Vec3::ZERO,
+                        on_ground: false,
+                    },
+                    collider: engine::physics::Collider {
+                        half_extents: Vec3::new(0.5, 0.75, 0.5),
+                    },
                 });
             }
         }
@@ -137,15 +146,42 @@ fn main() {
                 player.position.z - e.position.z,
             );
             if dir.length_squared() > 0.0001 {
-                let step = dir.normalize() * 2.0 * dt;
-                e.position += step;
+                let step = dir.normalize() * 2.0;
+                e.body.velocity.x = step.x;
+                e.body.velocity.z = step.z;
+            } else {
+                e.body.velocity.x = 0.0;
+                e.body.velocity.z = 0.0;
             }
+
+            engine::physics::apply_gravity(&mut e.body, dt);
+            engine::physics::integrate(&mut e.position, &mut e.body, dt);
+            if e.position.y <= e.collider.half_extents.y {
+                e.position.y = e.collider.half_extents.y;
+                if e.body.velocity.y <= 0.0 {
+                    e.body.velocity.y = 0.0;
+                    e.body.on_ground = true;
+                }
+            }
+
+            let mut obstacles = Player::artifact_aabbs();
+            obstacles.push(engine::physics::Aabb {
+                center: player.position,
+                half_extents: player.collider.half_extents,
+            });
+            engine::physics::resolve_aabb_collisions(
+                &mut e.position,
+                &mut e.body,
+                &e.collider,
+                &obstacles,
+            );
+
             e.bullet_timer -= dt;
             if e.bullet_timer <= 0.0 {
                 e.bullet_timer = 2.0;
                 let bdir = (player.position - e.position).normalize() * 5.0;
                 bullets.push(Bullet {
-                    position: e.position + Vec3::new(0.0, 0.5, 0.0),
+                    position: e.position + Vec3::new(0.0, e.collider.half_extents.y, 0.0),
                     velocity: bdir,
                     alive: true,
                 });
@@ -169,8 +205,18 @@ fn main() {
         let mut cubes: Vec<CubeInstance> = Vec::new();
         if let Some(e) = &enemy {
             cubes.push(CubeInstance {
+                position: e.position + Vec3::new(0.0, -0.5, 0.0),
+                size: 0.5,
+                color: [1.0, 0.0, 0.0],
+            });
+            cubes.push(CubeInstance {
                 position: e.position,
-                size: 1.0,
+                size: 0.7,
+                color: [1.0, 0.0, 0.0],
+            });
+            cubes.push(CubeInstance {
+                position: e.position + Vec3::new(0.0, 0.75, 0.0),
+                size: 0.4,
                 color: [1.0, 0.0, 0.0],
             });
             let dir = (player.position - e.position).normalize_or_zero();
@@ -194,7 +240,7 @@ fn main() {
             game_over = true;
         }
 
-        engine.renderer.render(overlay_text, &cubes);
+        engine.renderer.render(overlay_text, health, &cubes);
         engine.input.reset();
     });
 }
