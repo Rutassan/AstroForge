@@ -9,7 +9,7 @@ use input::InputState;
 use renderer::Renderer;
 use window::WindowState;
 use winit::{
-    event::Event,
+    event::{ElementState, Event, MouseButton, VirtualKeyCode},
     event_loop::{ControlFlow, EventLoop},
 };
 
@@ -19,6 +19,7 @@ pub struct Engine {
     pub input: InputState,
     pub audio: AudioSystem,
     pub renderer: Renderer,
+    pub paused: bool,
 }
 
 impl Engine {
@@ -32,7 +33,21 @@ impl Engine {
             input: InputState::default(),
             audio: AudioSystem::new(),
             renderer,
+            paused: false,
         }
+    }
+
+    /// Pause the engine and release the cursor.
+    pub fn pause(&mut self) {
+        self.paused = true;
+        self.window.release_cursor();
+    }
+
+    /// Resume the engine and capture the cursor.
+    pub fn resume(&mut self) {
+        self.paused = false;
+        self.window.capture_cursor();
+        self.input.reset();
     }
 
     pub fn run<F: FnMut(&mut Self) + 'static>(mut self, mut update: F) {
@@ -40,10 +55,31 @@ impl Engine {
         let mut engine = self;
         event_loop.run(move |event, _, control_flow| {
             engine.input.handle_event(&event);
+            // Handle global input for pausing/resuming the game.
+            match &event {
+                winit::event::Event::WindowEvent { event, .. } => match event {
+                    winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                        if let (Some(winit::event::VirtualKeyCode::Escape), winit::event::ElementState::Pressed) = (input.virtual_keycode, input.state) {
+                            if !engine.paused {
+                                engine.pause();
+                            }
+                        }
+                    }
+                    winit::event::WindowEvent::MouseInput { state: winit::event::ElementState::Pressed, button: winit::event::MouseButton::Left, .. } => {
+                        if engine.paused {
+                            engine.resume();
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
             match event {
                 Event::MainEventsCleared => {
-                    update(&mut engine);
-                    engine.window.request_redraw();
+                    if !engine.paused {
+                        update(&mut engine);
+                        engine.window.request_redraw();
+                    }
                 }
                 Event::RedrawRequested(_) => {
                     engine.renderer.render();

@@ -27,6 +27,23 @@ impl WindowState {
         Self { window }
     }
 
+    /// Attempt to capture the cursor and hide it. This works even on
+    /// platforms where pointer locking might not be available by
+    /// falling back to confining the cursor to the window.
+    pub fn capture_cursor(&self) {
+        let _ = self
+            .window
+            .set_cursor_grab(CursorGrabMode::Locked)
+            .or_else(|_| self.window.set_cursor_grab(CursorGrabMode::Confined));
+        self.window.set_cursor_visible(false);
+    }
+
+    /// Release the cursor and make it visible again.
+    pub fn release_cursor(&self) {
+        let _ = self.window.set_cursor_grab(CursorGrabMode::None);
+        self.window.set_cursor_visible(true);
+    }
+
     pub fn request_redraw(&self) {
         self.window.request_redraw();
     }
