@@ -1,5 +1,12 @@
 use bevy::input::mouse::MouseMotion;
 use bevy::prelude::*;
+use crate::Paused;
+
+#[derive(Resource, Default)]
+pub struct ControlSettings {
+    pub mouse_sensitivity: f32,
+    pub movement_speed: f32,
+}
 
 #[derive(Component)]
 pub struct Player {
@@ -24,17 +31,26 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_player).add_systems(
-            Update,
-            (camera_input, player_movement, player_physics, camera_follow).chain(),
-        );
+        app
+            .add_systems(Startup, setup_player)
+            .add_systems(
+                Update,
+                (camera_input, player_movement, player_physics, camera_follow)
+                    .chain()
+                    .run_if(not_paused),
+            );
     }
+}
+
+fn not_paused(paused: Res<Paused>) -> bool {
+    !paused.0
 }
 
 fn setup_player(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    settings: Res<ControlSettings>,
 ) {
     println!("🛸 Создание космического корабля...");
 
@@ -50,7 +66,7 @@ fn setup_player(
         Transform::from_xyz(0.0, 1.0, 0.0),
         Player {
             velocity: Vec3::ZERO,
-            speed: 8.0,
+            speed: settings.movement_speed,
             jump_power: 12.0,
             on_ground: false,
         },
@@ -177,18 +193,12 @@ fn player_physics(
 fn camera_follow(
     player_query: Query<&Transform, (With<Spaceship>, Without<Camera3d>)>,
     mut camera_query: Query<(&mut Transform, &CameraController), With<Camera3d>>,
-    time: Res<Time>,
 ) {
     if let (Ok(player_transform), Ok((mut camera_transform, controller))) =
         (player_query.single(), camera_query.single_mut())
     {
         let rotation = Quat::from_euler(EulerRot::YXZ, controller.yaw, controller.pitch, 0.0);
-        let target_pos = player_transform.translation
-            - rotation.mul_vec3(Vec3::new(0.0, 0.0, controller.distance))
-            + Vec3::Y * 2.0;
-        camera_transform.translation = camera_transform
-            .translation
-            .lerp(target_pos, time.delta_secs() * 5.0);
+        camera_transform.translation = player_transform.translation + Vec3::Y * 1.5;
         camera_transform.rotation = rotation;
     }
 }
