@@ -52,6 +52,10 @@ impl WindowState {
         // drawing handled in renderer
     }
 
+    pub fn set_title(&self, title: &str) {
+        self.window.set_title(title);
+    }
+
     pub fn handle_window_event(
         &mut self,
         event: &WindowEvent,

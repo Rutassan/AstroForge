@@ -13,6 +13,9 @@ fn main() {
     println!("🚀 AstroForge запуск собственного движка...");
     let mut engine = Engine::new("AstroForge", 1024, 768);
     let mut player = Player::new();
+    let default_title = "AstroForge";
+    let mut tech_unlocked = false;
+    let mut message_timer = 0.0f32;
 
     let b64_clean: String = ACTIVATION_B64
         .chars()
@@ -43,6 +46,13 @@ fn main() {
             if !activated && player.body.on_ground {
                 activated = true;
                 engine.audio.play_bytes(&bytes);
+                if !tech_unlocked {
+                    tech_unlocked = true;
+                    message_timer = 3.0;
+                    engine
+                        .window
+                        .set_title("Технология разблокирована: энергетический маяк");
+                }
             }
             pulse += dt * 3.0;
             let intensity = 0.2 + 0.8 * (0.5 + 0.5 * (pulse).sin());
@@ -53,6 +63,13 @@ fn main() {
                 pulse = 0.0;
             }
             engine.renderer.update_artifact(0.2);
+        }
+
+        if message_timer > 0.0 {
+            message_timer -= dt;
+            if message_timer <= 0.0 {
+                engine.window.set_title(default_title);
+            }
         }
 
         engine.input.reset();
