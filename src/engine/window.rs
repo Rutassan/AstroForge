@@ -1,7 +1,7 @@
 use winit::{
     event::WindowEvent,
     event_loop::EventLoop,
-    window::{Window, WindowBuilder},
+    window::{CursorGrabMode, Window, WindowBuilder},
 };
 
 pub struct WindowState {
@@ -15,6 +15,15 @@ impl WindowState {
             .with_inner_size(winit::dpi::LogicalSize::new(width, height))
             .build(event_loop)
             .expect("failed to create window");
+
+        // Hide and capture the cursor so the player can look around freely from
+        // the start of the game. On some platforms locking might fail, so
+        // fall back to confining the cursor to the window.
+        let _ = window
+            .set_cursor_grab(CursorGrabMode::Locked)
+            .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined));
+        window.set_cursor_visible(false);
+
         Self { window }
     }
 
