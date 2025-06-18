@@ -18,6 +18,12 @@ pub struct Renderer {
     pub floor_vertex: wgpu::Buffer,
     pub floor_index: wgpu::Buffer,
     pub floor_indices: u32,
+    pub artifact_vertex: wgpu::Buffer,
+    pub artifact_index: wgpu::Buffer,
+    pub artifact_indices: u32,
+    pub default_bind: wgpu::BindGroup,
+    pub artifact_bind: wgpu::BindGroup,
+    artifact_buffer: wgpu::Buffer,
     pub depth_texture: wgpu::Texture,
     pub depth_view: wgpu::TextureView,
 }
@@ -93,11 +99,58 @@ impl Renderer {
             label: Some("camera bind group"),
         });
 
+        // artifact intensity uniform
+        #[repr(C)]
+        #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+        struct ArtifactUniform {
+            intensity: f32,
+        }
+        let artifact_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Artifact Buffer"),
+            contents: bytemuck::bytes_of(&ArtifactUniform { intensity: 0.2 }),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let default_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Default Artifact Buffer"),
+            contents: bytemuck::bytes_of(&ArtifactUniform { intensity: 1.0 }),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        let artifact_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("artifact bind layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+        let default_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &artifact_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: default_buffer.as_entire_binding(),
+            }],
+            label: Some("default artifact bind group"),
+        });
+        let artifact_bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &artifact_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: artifact_buffer.as_entire_binding(),
+            }],
+            label: Some("artifact bind group"),
+        });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!("../../assets/unlit.wgsl"));
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("pipeline layout"),
-            bind_group_layouts: &[&camera_bind_group_layout],
+            bind_group_layouts: &[&camera_bind_group_layout, &artifact_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -135,6 +188,8 @@ impl Renderer {
 
         let (vertex_buffer, index_buffer, num_indices) = create_cube_buffers(&device);
         let (floor_vertex, floor_index, floor_indices) = create_floor_buffers(&device);
+        let (artifact_vertex, artifact_index, artifact_indices) =
+            create_artifact_buffers(&device);
 
         Self {
             surface,
@@ -151,6 +206,12 @@ impl Renderer {
             floor_vertex,
             floor_index,
             floor_indices,
+            artifact_vertex,
+            artifact_index,
+            artifact_indices,
+            default_bind,
+            artifact_bind,
+            artifact_buffer,
             depth_texture,
             depth_view,
         }
@@ -179,6 +240,17 @@ impl Renderer {
         };
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&data));
+    }
+
+    pub fn update_artifact(&self, intensity: f32) {
+        #[repr(C)]
+        #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+        struct ArtifactUniform {
+            intensity: f32,
+        }
+        let data = ArtifactUniform { intensity };
+        self.queue
+            .write_buffer(&self.artifact_buffer, 0, bytemuck::bytes_of(&data));
     }
 
     pub fn render(&mut self) {
@@ -226,12 +298,15 @@ impl Renderer {
             });
             rpass.set_pipeline(&self.pipeline);
             rpass.set_bind_group(0, &self.camera_bind, &[]);
+            rpass.set_bind_group(1, &self.default_bind, &[]);
             rpass.set_vertex_buffer(0, self.floor_vertex.slice(..));
             rpass.set_index_buffer(self.floor_index.slice(..), wgpu::IndexFormat::Uint16);
             rpass.draw_indexed(0..self.floor_indices, 0, 0..1);
-            rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            rpass.draw_indexed(0..self.num_indices, 0, 0..1);
+
+            rpass.set_bind_group(1, &self.artifact_bind, &[]);
+            rpass.set_vertex_buffer(0, self.artifact_vertex.slice(..));
+            rpass.set_index_buffer(self.artifact_index.slice(..), wgpu::IndexFormat::Uint16);
+            rpass.draw_indexed(0..self.artifact_indices, 0, 0..1);
         }
         self.queue.submit(Some(encoder.finish()));
         output.present();
@@ -357,6 +432,62 @@ fn create_floor_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer, u
     let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Floor Index Buffer"),
         contents: bytemuck::cast_slice(indices),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+    (vertex_buffer, index_buffer, indices.len() as u32)
+}
+
+fn create_artifact_buffers(device: &wgpu::Device) -> (wgpu::Buffer, wgpu::Buffer, u32) {
+    let base_vertices = [
+        // front
+        Vertex { position: [-0.5, 0.0, 0.5], color: [1.0, 1.0, 1.0] },
+        Vertex { position: [0.5, 0.0, 0.5], color: [1.0, 1.0, 1.0] },
+        Vertex { position: [0.5, 1.0, 0.5], color: [1.0, 1.0, 1.0] },
+        Vertex { position: [-0.5, 1.0, 0.5], color: [1.0, 1.0, 1.0] },
+        // back
+        Vertex { position: [-0.5, 0.0, -0.5], color: [1.0, 1.0, 1.0] },
+        Vertex { position: [0.5, 0.0, -0.5], color: [1.0, 1.0, 1.0] },
+        Vertex { position: [0.5, 1.0, -0.5], color: [1.0, 1.0, 1.0] },
+        Vertex { position: [-0.5, 1.0, -0.5], color: [1.0, 1.0, 1.0] },
+    ];
+    let base_indices: &[u16] = &[
+        0, 1, 2, 2, 3, 0, // front
+        1, 5, 6, 6, 2, 1, // right
+        5, 4, 7, 7, 6, 5, // back
+        4, 0, 3, 3, 7, 4, // left
+        3, 2, 6, 6, 7, 3, // top
+        4, 5, 1, 1, 0, 4, // bottom
+    ];
+
+    let count = 28u16;
+    let radius = 3.0f32;
+    let mut vertices = Vec::with_capacity((base_vertices.len() as u16 * count) as usize);
+    let mut indices = Vec::with_capacity((base_indices.len() as u16 * count) as usize);
+
+    for i in 0..count {
+        let angle = i as f32 / count as f32 * std::f32::consts::TAU;
+        let x = radius * angle.cos();
+        let z = radius * angle.sin();
+        let base = i * base_vertices.len() as u16;
+        for v in &base_vertices {
+            vertices.push(Vertex {
+                position: [v.position[0] + x, v.position[1], v.position[2] + z],
+                color: v.color,
+            });
+        }
+        for idx in base_indices {
+            indices.push(base + *idx);
+        }
+    }
+
+    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Artifact Vertex Buffer"),
+        contents: bytemuck::cast_slice(&vertices),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Artifact Index Buffer"),
+        contents: bytemuck::cast_slice(&indices),
         usage: wgpu::BufferUsages::INDEX,
     });
     (vertex_buffer, index_buffer, indices.len() as u32)
