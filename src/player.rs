@@ -29,15 +29,15 @@ impl Player {
                 velocity: Vec3::ZERO,
                 on_ground: false,
             },
-            speed: 8.0,
-            jump_power: 12.0,
+            speed: 10.0,
+            jump_power: 16.0,
             collider: Collider {
                 half_extents: Vec3::new(0.5, 0.75, 0.5),
             },
         }
     }
 
-    fn artifact_aabbs() -> Vec<Aabb> {
+    pub fn artifact_aabbs() -> Vec<Aabb> {
         const COUNT: usize = 28;
         const RADIUS: f32 = 3.0;
         let mut blocks = Vec::with_capacity(COUNT);

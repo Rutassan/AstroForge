@@ -380,7 +380,39 @@ impl Renderer {
             .expect("Draw glyphs");
     }
 
-    pub fn render(&mut self, overlay_text: Option<&str>, cubes: &[CubeInstance]) {
+    pub fn render_health_text(
+        &mut self,
+        health: i32,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        staging_belt: &mut wgpu::util::StagingBelt,
+    ) {
+        let text = format!("Health: {}", health);
+        let section = Section {
+            screen_position: (30.0, 70.0),
+            bounds: (
+                self.size.width as f32 - 60.0,
+                self.size.height as f32 - 60.0,
+            ),
+            text: vec![Text::new(&text)
+                .with_color([0.0, 1.0, 0.0, 1.0])
+                .with_scale(28.0)],
+            ..Section::default()
+        };
+        self.glyph_brush.queue(section);
+        self.glyph_brush
+            .draw_queued(
+                &self.device,
+                staging_belt,
+                encoder,
+                view,
+                self.size.width,
+                self.size.height,
+            )
+            .expect("Draw glyphs");
+    }
+
+    pub fn render(&mut self, overlay_text: Option<&str>, health: i32, cubes: &[CubeInstance]) {
         use wgpu::util::StagingBelt;
         let mut staging_belt = StagingBelt::new(1024);
         let output = match self.surface.get_current_texture() {
@@ -527,6 +559,7 @@ impl Renderer {
         if let Some(text) = overlay_text {
             self.render_overlay_text(text, &mut encoder, &view, &mut staging_belt);
         }
+        self.render_health_text(health, &mut encoder, &view, &mut staging_belt);
         staging_belt.finish();
         self.queue.submit(Some(encoder.finish()));
         output.present();
