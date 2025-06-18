@@ -1,9 +1,9 @@
+use base64::{engine::general_purpose, Engine as _};
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, PrimaryWindow};
-use base64::{engine::general_purpose, Engine as _};
 
 mod player;
-use player::{CameraController, PlayerPlugin, Collider};
+use player::{CameraController, Collider, PlayerPlugin};
 
 #[derive(Resource, Default)]
 struct Paused(pub bool);
@@ -11,6 +11,15 @@ struct Paused(pub bool);
 #[derive(Component)]
 struct Flicker {
     base_intensity: f32,
+    amplitude: f32,
+    speed: f32,
+    active: bool,
+}
+
+#[derive(Component)]
+struct Glow {
+    material: Handle<StandardMaterial>,
+    base_emissive: Color,
     amplitude: f32,
     speed: f32,
     active: bool,
@@ -44,6 +53,7 @@ fn main() {
         .add_systems(Update, toggle_pause)
         .add_systems(Update, artifact_reaction)
         .add_systems(Update, flicker_light)
+        .add_systems(Update, glow_blocks)
         .run();
 }
 
@@ -105,7 +115,9 @@ fn setup_scene(
                 ..default()
             })),
             Transform::from_xyz(i as f32 * 3.0 - 6.0, 0.5, 3.0),
-            Collider { half_extents: Vec3::splat(0.5) },
+            Collider {
+                half_extents: Vec3::splat(0.5),
+            },
         ));
     }
 
@@ -113,11 +125,16 @@ fn setup_scene(
     spawn_mysterious_structure(&mut commands, &mut meshes, &mut materials);
 
     // Загружаем звук активации артефакта из встроенных данных
-    let b64_clean: String = ACTIVATION_B64.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/' || *c == '=').collect();
+    let b64_clean: String = ACTIVATION_B64
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '+' || *c == '/' || *c == '=')
+        .collect();
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&b64_clean)
         .expect("valid base64 (проверьте файл assets/activation.ogg.b64)");
-    let handle = audio_assets.add(AudioSource { bytes: bytes.into() });
+    let handle = audio_assets.add(AudioSource {
+        bytes: bytes.into(),
+    });
     commands.insert_resource(ActivationSound(handle));
 
     // Мерцающий свет в центре конструкции (неактивен при старте)
@@ -165,7 +182,9 @@ fn spawn_mysterious_structure(
                     Mesh3d(block_mesh.clone()),
                     MeshMaterial3d(block_material.clone()),
                     Transform::from_xyz(x, 0.5 + y as f32, z),
-                    Collider { half_extents: Vec3::splat(0.5) },
+                    Collider {
+                        half_extents: Vec3::splat(0.5),
+                    },
                 ));
             }
         }
@@ -179,14 +198,43 @@ fn spawn_mysterious_structure(
                 Mesh3d(block_mesh.clone()),
                 MeshMaterial3d(block_material.clone()),
                 Transform::from_xyz(x, 3.5, z),
-                Collider { half_extents: Vec3::splat(0.5) },
+                Collider {
+                    half_extents: Vec3::splat(0.5),
+                },
             ));
         }
+    }
+
+    // Центральные блоки артефакта с подсветкой
+    for i in 0..3 {
+        let mat = materials.add(StandardMaterial {
+            base_color: Color::srgb(0.05, 0.05, 0.05),
+            perceptual_roughness: 0.9,
+            emissive: Color::BLACK,
+            ..default()
+        });
+        commands.spawn((
+            Mesh3d(block_mesh.clone()),
+            MeshMaterial3d(mat.clone()),
+            Transform::from_xyz(0.0, 0.5 + i as f32, 0.0),
+            Collider {
+                half_extents: Vec3::splat(0.5),
+            },
+            Glow {
+                material: mat,
+                base_emissive: Color::rgb(0.2, 0.6, 1.0),
+                amplitude: 1.0,
+                speed: 3.0,
+                active: false,
+            },
+            Artifact,
+        ));
     }
 }
 fn artifact_reaction(
     player: Query<&Transform, With<player::Spaceship>>,
     mut flicker: Query<&mut Flicker, With<Artifact>>,
+    mut glows: Query<&mut Glow>,
     sound: Res<ActivationSound>,
     mut commands: Commands,
     mut state: Local<bool>,
@@ -204,11 +252,17 @@ fn artifact_reaction(
         for mut f in &mut flicker {
             f.active = true;
         }
+        for mut g in &mut glows {
+            g.active = true;
+        }
         commands.spawn(AudioPlayer::new(sound.0.clone()));
     } else if !near && *state {
         *state = false;
         for mut f in &mut flicker {
             f.active = false;
+        }
+        for mut g in &mut glows {
+            g.active = false;
         }
     }
 }
@@ -224,6 +278,29 @@ fn flicker_light(time: Res<Time>, mut query: Query<(&mut PointLight, &Flicker)>)
     }
 }
 
+fn glow_blocks(
+    time: Res<Time>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    query: Query<&Glow>,
+) {
+    for glow in &query {
+        if let Some(mat) = materials.get_mut(&glow.material) {
+            if glow.active {
+                let t = (time.elapsed_secs() * glow.speed).sin() * 0.5 + 0.5;
+                let intensity = glow.amplitude * t;
+                let base = glow.base_emissive.to_linear();
+                mat.emissive = Color::linear_rgb(
+                    base.red * intensity,
+                    base.green * intensity,
+                    base.blue * intensity,
+                );
+            } else {
+                mat.emissive = Color::BLACK;
+            }
+        }
+    }
+}
+
 fn toggle_pause(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -234,7 +311,8 @@ fn toggle_pause(
         paused.0 = !paused.0;
     }
 
-    if paused.0 && (mouse.just_pressed(MouseButton::Left) || keyboard.just_pressed(KeyCode::Enter)) {
+    if paused.0 && (mouse.just_pressed(MouseButton::Left) || keyboard.just_pressed(KeyCode::Enter))
+    {
         paused.0 = false;
     }
 
