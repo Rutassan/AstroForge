@@ -21,7 +21,8 @@ struct Enemy {
 
 struct Bullet {
     position: Vec3,
-    velocity: Vec3,
+    body: engine::physics::RigidBody,
+    collider: engine::physics::Collider,
     alive: bool,
 }
 
@@ -154,50 +155,95 @@ fn main() {
                 e.body.velocity.z = 0.0;
             }
 
-            engine::physics::apply_gravity(&mut e.body, dt);
-            engine::physics::integrate(&mut e.position, &mut e.body, dt);
-            if e.position.y <= e.collider.half_extents.y {
-                e.position.y = e.collider.half_extents.y;
-                if e.body.velocity.y <= 0.0 {
-                    e.body.velocity.y = 0.0;
-                    e.body.on_ground = true;
-                }
-            }
-
-            let mut obstacles = Player::artifact_aabbs();
-            obstacles.push(engine::physics::Aabb {
-                center: player.position,
-                half_extents: player.collider.half_extents,
-            });
-            engine::physics::resolve_aabb_collisions(
-                &mut e.position,
-                &mut e.body,
-                &e.collider,
-                &obstacles,
-            );
-
             e.bullet_timer -= dt;
             if e.bullet_timer <= 0.0 {
                 e.bullet_timer = 2.0;
                 let bdir = (player.position - e.position).normalize() * 5.0;
                 bullets.push(Bullet {
                     position: e.position + Vec3::new(0.0, e.collider.half_extents.y, 0.0),
-                    velocity: bdir,
+                    body: engine::physics::RigidBody {
+                        velocity: bdir,
+                        on_ground: false,
+                    },
+                    collider: engine::physics::Collider {
+                        half_extents: Vec3::splat(0.1),
+                    },
                     alive: true,
                 });
             }
         }
 
+        // Physics simulation step
+        let mut static_obs = Player::artifact_aabbs();
+        static_obs.push(engine::physics::Aabb {
+            center: Vec3::new(0.0, -0.5, 0.0),
+            half_extents: Vec3::new(50.0, 0.5, 50.0),
+        });
+        let mut objs: Vec<engine::physics::PhysicsObject> = Vec::new();
+        let player_idx = objs.len();
+        objs.push(engine::physics::PhysicsObject {
+            position: &mut player.position,
+            body: &mut player.body,
+            collider: player.collider,
+        });
+        let enemy_idx = if let Some(e) = &mut enemy {
+            let idx = objs.len();
+            objs.push(engine::physics::PhysicsObject {
+                position: &mut e.position,
+                body: &mut e.body,
+                collider: e.collider,
+            });
+            Some(idx)
+        } else {
+            None
+        };
+        let mut bullet_indices = Vec::new();
         for b in &mut bullets {
-            b.position += b.velocity * dt;
-            if (b.position - player.position).length() < 0.5 {
-                b.alive = false;
-                if health > 0 {
-                    health -= 10;
+            let idx = objs.len();
+            bullet_indices.push(idx);
+            objs.push(engine::physics::PhysicsObject {
+                position: &mut b.position,
+                body: &mut b.body,
+                collider: b.collider,
+            });
+        }
+
+        let pairs = engine::physics::step(&mut objs, &static_obs, dt);
+
+        for (a, b) in pairs {
+            // bullet hitting player or enemy
+            if let Some(bullet_i) = bullet_indices.iter().position(|&x| x == a) {
+                let bullet = &mut bullets[bullet_i];
+                if a == player_idx || b == player_idx {
+                    bullet.alive = false;
+                    if health > 0 {
+                        health -= 10;
+                    }
+                    player.body.velocity += bullet.body.velocity * 0.5;
+                } else if let Some(e_idx) = enemy_idx {
+                    if a == e_idx || b == e_idx {
+                        bullet.alive = false;
+                    }
                 }
-                // Apply a small knockback in the direction the bullet was
-                // travelling when it hit the player.
-                player.body.velocity += b.velocity * 0.5;
+            } else if let Some(bullet_i) = bullet_indices.iter().position(|&x| x == b) {
+                let bullet = &mut bullets[bullet_i];
+                if a == player_idx || b == player_idx {
+                    bullet.alive = false;
+                    if health > 0 {
+                        health -= 10;
+                    }
+                    player.body.velocity += bullet.body.velocity * 0.5;
+                } else if let Some(e_idx) = enemy_idx {
+                    if a == e_idx || b == e_idx {
+                        bullet.alive = false;
+                    }
+                }
+            }
+        }
+
+        for b in &mut bullets {
+            if b.body.velocity.length_squared() == 0.0 {
+                b.alive = false;
             }
         }
         bullets.retain(|b| b.alive);
