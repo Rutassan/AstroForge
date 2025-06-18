@@ -6,6 +6,8 @@ use winit::event::VirtualKeyCode;
 pub struct Player {
     pub position: Vec3,
     pub rotation: Quat,
+    yaw: f32,
+    pitch: f32,
     pub body: RigidBody,
     pub speed: f32,
     pub jump_power: f32,
@@ -17,6 +19,8 @@ impl Player {
         Self {
             position: Vec3::new(0.0, 1.0, 0.0),
             rotation: Quat::IDENTITY,
+            yaw: 0.0,
+            pitch: 0.0,
             body: RigidBody {
                 velocity: Vec3::ZERO,
                 on_ground: false,
@@ -30,18 +34,26 @@ impl Player {
     }
 
     pub fn update(&mut self, input: &InputState, dt: f32) {
+        let sensitivity = 0.002;
+        self.yaw -= input.mouse_delta.0 * sensitivity;
+        self.pitch = (self.pitch - input.mouse_delta.1 * sensitivity).clamp(-1.54, 1.54);
+        self.rotation =
+            Quat::from_axis_angle(Vec3::Y, self.yaw) * Quat::from_axis_angle(Vec3::X, self.pitch);
+
+        let forward = self.rotation * Vec3::Z * -1.0;
+        let right = self.rotation * Vec3::X;
         let mut direction = Vec3::ZERO;
         if input.pressed(VirtualKeyCode::W) {
-            direction.z -= 1.0;
+            direction += forward;
         }
         if input.pressed(VirtualKeyCode::S) {
-            direction.z += 1.0;
+            direction -= forward;
         }
         if input.pressed(VirtualKeyCode::A) {
-            direction.x -= 1.0;
+            direction -= right;
         }
         if input.pressed(VirtualKeyCode::D) {
-            direction.x += 1.0;
+            direction += right;
         }
         if input.pressed(VirtualKeyCode::Space) && self.body.on_ground {
             self.body.velocity.y = self.jump_power;
