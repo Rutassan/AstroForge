@@ -1,5 +1,5 @@
 [package]
-name = "AstroForge"
+name = "astroforge"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,3 +14,4 @@ bytemuck = { version = "1", features = ["derive"] }
 wgpu_glyph = "0.21.0"
 reqwest = { version = "0.11", features = ["blocking"] }
 zip = "4.1.0"
+image = "0.24"

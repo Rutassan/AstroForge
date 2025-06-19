@@ -17,16 +17,14 @@ pub struct Player {
 
 impl Player {
     pub fn new() -> Self {
+        let start_pos = Vec3::new(0.0, 1.0, 2.0);
         Self {
-            // Spawn the player a bit away from the origin so the initial view
-            // isn't clipped by the cube at the center of the scene.
-            position: Vec3::new(0.0, 1.0, 2.0),
+            position: start_pos,
             rotation: Quat::IDENTITY,
             yaw: 0.0,
             pitch: 0.0,
-            body: RigidBody::new(80.0),
+            body: RigidBody::new(80.0, start_pos),
             movement_force: 300.0,
-            // Импульс прыжка задаётся в ньютон-секундах
             jump_impulse: 500.0,
             friction: 5.0,
             collider: Collider {
@@ -89,5 +87,8 @@ impl Player {
         // Простое затухание скорости через силу трения
         self.body
             .apply_force(-self.body.velocity * self.friction * self.body.mass);
+
+        // Синхронизируем позицию игрока с физическим телом
+        self.position = self.body.position;
     }
 }

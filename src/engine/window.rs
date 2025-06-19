@@ -66,4 +66,17 @@ impl WindowState {
             _ => None,
         }
     }
+
+    pub fn dummy(width: u32, height: u32) -> Self {
+        struct DummyWindow;
+        impl DummyWindow {
+            fn request_redraw(&self) {}
+            fn set_title(&self, _title: &str) {}
+            fn set_cursor_grab(&self, _mode: CursorGrabMode) -> Result<(), ()> { Ok(()) }
+            fn set_cursor_visible(&self, _visible: bool) {}
+        }
+        // SAFETY: мы не используем это окно нигде, кроме как для заглушки
+        let window: Window = unsafe { std::mem::zeroed() };
+        Self { window }
+    }
 }

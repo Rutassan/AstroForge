@@ -37,6 +37,18 @@ impl Engine {
         }
     }
 
+    pub fn new_headless(width: u32, height: u32) -> Self {
+        let renderer = futures_lite::future::block_on(Renderer::new_headless(width, height));
+        Self {
+            event_loop: None,
+            window: WindowState::dummy(width, height),
+            input: InputState::default(),
+            audio: AudioSystem::new(),
+            renderer,
+            paused: false,
+        }
+    }
+
     /// Pause the engine and release the cursor.
     pub fn pause(&mut self) {
         self.paused = true;
