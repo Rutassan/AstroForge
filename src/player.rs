@@ -92,3 +92,62 @@ impl Player {
         self.position = self.body.position;
     }
 }
+
+pub struct Enemy {
+    pub bullet_timer: f32,
+    pub body: RigidBody,
+    pub collider: Collider,
+}
+
+const ENEMY_COLOR: [f32; 3] = [1.0, 0.0, 0.0];
+
+impl Enemy {
+    pub fn new() -> Self {
+        Self {
+            bullet_timer: 2.0,
+            body: RigidBody::new(80.0, Vec3::new(8.0, 0.75, -8.0)),
+            collider: Collider {
+                half_extents: Vec3::new(0.5, 0.75, 0.5),
+            },
+        }
+    }
+
+    pub fn update(&mut self, dt: f32) {
+        // Для тестов враг остаётся на месте, но обновляем таймер выстрела
+        self.bullet_timer -= dt;
+    }
+
+    pub fn append_cubes(&self, cubes: &mut Vec<crate::engine::renderer::CubeInstance>) {
+        let base = self.body.position;
+        cubes.push(crate::engine::renderer::CubeInstance {
+            position: base + Vec3::new(0.0, 0.3, 0.0),
+            size: 0.4,
+            color: ENEMY_COLOR,
+        });
+        cubes.push(crate::engine::renderer::CubeInstance {
+            position: base + Vec3::new(0.0, 0.65, 0.0),
+            size: 0.22,
+            color: ENEMY_COLOR,
+        });
+        cubes.push(crate::engine::renderer::CubeInstance {
+            position: base + Vec3::new(-0.12, 0.08, 0.0),
+            size: 0.16,
+            color: ENEMY_COLOR,
+        });
+        cubes.push(crate::engine::renderer::CubeInstance {
+            position: base + Vec3::new(0.12, 0.08, 0.0),
+            size: 0.16,
+            color: ENEMY_COLOR,
+        });
+        cubes.push(crate::engine::renderer::CubeInstance {
+            position: base + Vec3::new(-0.23, 0.38, 0.0),
+            size: 0.13,
+            color: ENEMY_COLOR,
+        });
+        cubes.push(crate::engine::renderer::CubeInstance {
+            position: base + Vec3::new(0.23, 0.38, 0.0),
+            size: 0.13,
+            color: ENEMY_COLOR,
+        });
+    }
+}

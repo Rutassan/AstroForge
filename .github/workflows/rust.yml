@@ -1,0 +1,25 @@
+name: Rust
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Install mesa for headless GL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dri libegl1-mesa xvfb
+      - run: cargo build --all --no-default-features
+      - name: Run tests
+        env:
+          WGPU_BACKEND: gl
+          LIBGL_ALWAYS_SOFTWARE: "1"
+        run: xvfb-run -a cargo test --all --no-default-features

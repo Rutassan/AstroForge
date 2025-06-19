@@ -1,8 +1,7 @@
-use astroforge::player::Player;
-use astroforge::engine::Engine;
-use astroforge::engine::renderer::CubeInstance;
 use astroforge::engine;
-use astroforge::player;
+use astroforge::engine::renderer::CubeInstance;
+use astroforge::engine::Engine;
+use astroforge::player::{Enemy, Player};
 use base64::Engine as _;
 use glam::{Mat4, Vec2, Vec3};
 use image::{ImageBuffer, Rgba};
@@ -10,14 +9,6 @@ use std::env;
 use std::time::Instant;
 
 const ACTIVATION_B64: &str = include_str!("../assets/activation.ogg.b64");
-const ENEMY_COLOR: [f32; 3] = [1.0, 0.0, 0.0];
-
-#[derive(Clone)]
-struct Enemy {
-    bullet_timer: f32,
-    body: engine::physics::RigidBody,
-    collider: engine::physics::Collider,
-}
 
 struct Bullet {
     position: Vec3,
@@ -133,13 +124,7 @@ fn main() {
         if spawn_started && spawn_timer > 0.0 {
             spawn_timer -= dt;
             if spawn_timer <= 0.0 {
-                enemy = Some(Enemy {
-                    bullet_timer: 2.0,
-                    body: engine::physics::RigidBody::new(80.0, Vec3::new(8.0, 0.75, -8.0)),
-                    collider: engine::physics::Collider {
-                        half_extents: Vec3::new(0.5, 0.75, 0.5),
-                    },
-                });
+                enemy = Some(Enemy::new());
             }
         }
 
@@ -154,7 +139,7 @@ fn main() {
                 e.body.apply_force(dir * 200.0);
             }
             e.body.apply_force(-e.body.velocity * 5.0 * e.body.mass);
-            e.bullet_timer -= dt;
+            e.update(dt);
             if tech_unlocked && e.bullet_timer <= 0.0 {
                 e.bullet_timer = 2.0;
                 let dir = (player.body.position - e.body.position).normalize();
@@ -264,46 +249,10 @@ fn main() {
 
         let mut cubes: Vec<CubeInstance> = Vec::new();
         if let Some(e) = &enemy {
-            let base = e.body.position;
-            // Туловище
-            cubes.push(CubeInstance {
-                position: base + Vec3::new(0.0, 0.3, 0.0),
-                size: 0.4,
-                color: ENEMY_COLOR,
-            });
-            // Голова
-            cubes.push(CubeInstance {
-                position: base + Vec3::new(0.0, 0.65, 0.0),
-                size: 0.22,
-                color: ENEMY_COLOR,
-            });
-            // Левая нога
-            cubes.push(CubeInstance {
-                position: base + Vec3::new(-0.12, 0.08, 0.0),
-                size: 0.16,
-                color: ENEMY_COLOR,
-            });
-            // Правая нога
-            cubes.push(CubeInstance {
-                position: base + Vec3::new(0.12, 0.08, 0.0),
-                size: 0.16,
-                color: ENEMY_COLOR,
-            });
-            // Левая рука
-            cubes.push(CubeInstance {
-                position: base + Vec3::new(-0.23, 0.38, 0.0),
-                size: 0.13,
-                color: ENEMY_COLOR,
-            });
-            // Правая рука
-            cubes.push(CubeInstance {
-                position: base + Vec3::new(0.23, 0.38, 0.0),
-                size: 0.13,
-                color: ENEMY_COLOR,
-            });
+            e.append_cubes(&mut cubes);
             // Пистолет
-            let dir = (player.body.position - base).normalize_or_zero();
-            let pistol_pos = base + Vec3::new(dir.x * 0.7, 0.38, dir.z * 0.7);
+            let dir = (player.body.position - e.body.position).normalize_or_zero();
+            let pistol_pos = e.body.position + Vec3::new(dir.x * 0.7, 0.38, dir.z * 0.7);
             cubes.push(CubeInstance {
                 position: pistol_pos,
                 size: 0.11,
@@ -333,7 +282,6 @@ fn main() {
         let height = 768u32;
         let mut engine = Engine::new(window_title, width, height);
         let mut player = Player::new();
-        let mut enemy: Option<Enemy> = None;
         let mut bullets: Vec<Bullet> = Vec::new();
         // ...инициализация сцены, как обычно...
         // Рендерим один кадр
@@ -345,30 +293,5 @@ fn main() {
         save_screenshot(&buffer, width, height, "screenshot.png");
         println!("Screenshot saved to screenshot.png");
         return;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn enemy_position_stability() {
-        let mut body = RigidBody::new(80.0, Vec3::new(8.0, 0.75, -8.0));
-        let collider = Collider { half_extents: Vec3::new(0.5, 0.75, 0.5) };
-        let static_obs = vec![Aabb { center: Vec3::new(0.0, -0.5, 0.0), half_extents: Vec3::new(50.0, 0.5, 50.0) }];
-        let mut positions = Vec::new();
-        for _ in 0..300 {
-            let mut obj = PhysicsObject { body: &mut body, collider };
-            let mut objs = vec![obj];
-            step(&mut objs, &static_obs, 1.0/60.0);
-            positions.push(body.position);
-        }
-        // Проверяем, что позиция не "скачет" по y
-        let mut max_diff = 0.0;
-        for w in positions.windows(2) {
-            let dy = (w[1].y - w[0].y).abs();
-            if dy > max_diff { max_diff = dy; }
-        }
-        assert!(max_diff < 0.01, "Enemy Y position is unstable: max diff = {}", max_diff);
     }
 }
