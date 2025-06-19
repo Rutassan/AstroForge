@@ -7,6 +7,7 @@ use astroforge::player::Enemy;
 
 #[test]
 fn enemy_visual_stability() {
+    std::env::set_var("WGPU_BACKEND", "gl");
     let width = 1024u32;
     let height = 768u32;
     // Инициализация движка и врага

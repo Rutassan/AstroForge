@@ -46,16 +46,17 @@ pub struct CubeInstance {
 impl Renderer {
     pub async fn new(window: &winit::window::Window) -> Self {
         let size = window.inner_size();
-        let instance = wgpu::Instance::default();
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
         let surface = Some(unsafe { instance.create_surface(window) }.unwrap());
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface.as_ref().unwrap()),
-                force_fallback_adapter: false,
-            })
-            .await
-            .expect("No adapter");
+        let adapter = wgpu::util::initialize_adapter_from_env_or_default(
+            &instance,
+            surface.as_ref(),
+        )
+        .await
+        .expect("No adapter");
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await
@@ -337,15 +338,16 @@ impl Renderer {
     }
 
     pub async fn new_headless(width: u32, height: u32) -> Self {
-        let instance = wgpu::Instance::default();
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            })
-            .await
-            .expect("No adapter");
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+        let adapter = wgpu::util::initialize_adapter_from_env_or_default(
+            &instance,
+            None,
+        )
+        .await
+        .expect("No adapter");
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await
@@ -644,19 +646,30 @@ impl Renderer {
             let output = match surface.get_current_texture() {
                 Ok(frame) => frame,
                 Err(_) => {
-                    self.surface.as_ref().unwrap().configure(&self.device, &self.config);
-                    self.surface.as_ref().unwrap().get_current_texture().unwrap()
+                    self.surface
+                        .as_ref()
+                        .unwrap()
+                        .configure(&self.device, &self.config);
+                    self.surface
+                        .as_ref()
+                        .unwrap()
+                        .get_current_texture()
+                        .unwrap()
                 }
             };
-            let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
+            let view = output
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Render Encoder"),
+                });
             {
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Render Pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view,
+                        view: &view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -676,7 +689,8 @@ impl Renderer {
                 render_pass.set_bind_group(0, &self.camera_bind, &[]);
                 render_pass.set_bind_group(1, &self.default_bind, &[]);
                 render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-                render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass
+                    .set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
                 // ...добавьте рендер кубов, артефактов и т.д. по вашей логике...
             }
@@ -689,15 +703,17 @@ impl Renderer {
             output.present();
         } else {
             // Headless/offscreen: рендерим в offscreen_view
-            let view = self.offscreen_view.as_ref().unwrap();
-            let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder (Headless)"),
-            });
+            let mut view = self.offscreen_view.take().unwrap();
+            let mut encoder = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Render Encoder (Headless)"),
+                });
             {
                 let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Render Pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &*view,
+                        view: &view,
                         resolve_target: None,
                         ops: wgpu::Operations {
                             load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -717,17 +733,19 @@ impl Renderer {
                 render_pass.set_bind_group(0, &self.camera_bind, &[]);
                 render_pass.set_bind_group(1, &self.default_bind, &[]);
                 render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-                render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass
+                    .set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
                 // ...добавьте рендер кубов, артефактов и т.д. по вашей логике...
             }
             if let Some(text) = overlay_text {
-                self.render_overlay_text(text, &mut encoder, &*view, &mut staging_belt);
+                self.render_overlay_text(text, &mut encoder, &view, &mut staging_belt);
             }
-            self.render_health_text(health, &mut encoder, &*view, &mut staging_belt);
+            self.render_health_text(health, &mut encoder, &view, &mut staging_belt);
             staging_belt.finish();
             self.queue.submit(Some(encoder.finish()));
             self.device.poll(wgpu::Maintain::Wait);
+            self.offscreen_view = Some(view);
         }
     }
 
@@ -746,9 +764,11 @@ impl Renderer {
         } else {
             self.offscreen_texture.as_ref().unwrap()
         };
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Screenshot Encoder"),
-        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Screenshot Encoder"),
+            });
         encoder.copy_texture_to_buffer(
             wgpu::ImageCopyTexture {
                 texture: src_texture,
