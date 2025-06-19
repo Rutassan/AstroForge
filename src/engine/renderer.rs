@@ -348,6 +348,7 @@ impl Renderer {
         )
         .await
         .expect("No adapter");
+
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await
